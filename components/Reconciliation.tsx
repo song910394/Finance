@@ -57,18 +57,24 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
     });
   };
 
+  // Logic: Current Bill List
+  // Includes unbilled items that are:
+  // 1. Within the cycle range (if defined)
+  // 2. OR regular transactions (not recurring/installments) that date AFTER the cycle range (to satisfy user request)
+  // 3. OR everything if no cycle range is defined
   const candidateTransactions = useMemo(() => {
     if (selectedBank === '-') return [];
     const range = getCycleRange(selectedBank, selectedStatementMonth);
-    if (!range) return transactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === selectedBank && !t.isReconciled);
-
-    return transactions.filter(t => 
-      t.paymentMethod === PaymentMethod.CREDIT_CARD && 
-      t.cardBank === selectedBank && 
-      !t.isReconciled &&
-      t.date >= range.start && 
-      t.date <= range.end
-    ).sort((a, b) => b.date.localeCompare(a.date));
+    
+    return transactions.filter(t => {
+      if (t.paymentMethod !== PaymentMethod.CREDIT_CARD || t.cardBank !== selectedBank || t.isReconciled) return false;
+      if (!range) return true;
+      
+      const inRange = t.date >= range.start && t.date <= range.end;
+      const isRegularFuture = t.date > range.end && !t.isRecurring && !t.isInstallment;
+      
+      return inRange || isRegularFuture;
+    }).sort((a, b) => b.date.localeCompare(a.date));
   }, [transactions, selectedBank, selectedStatementMonth, cardSettings]);
 
   const reconciledTotalInCycle = useMemo(() => {
@@ -93,6 +99,44 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
         return { bank, unbilled, billed, issued, totalCount: txs.length };
     }).filter(s => s.totalCount > 0);
   }, [transactions, cardBanks, cardSettings, selectedStatementMonth]);
+
+  // Helpers for Detail Modal
+  const getDetailTransactions = (bank: string, type: 'current' | 'future' | 'reconciled') => {
+    const range = getCycleRange(bank, selectedStatementMonth);
+    return transactions.filter(t => {
+        if (t.cardBank !== bank) return false;
+        
+        if (type === 'reconciled') {
+            return t.isReconciled;
+        }
+
+        if (t.isReconciled) return false;
+
+        if (!range) return type === 'current'; // If no range, everything unbilled is current
+
+        const inRange = t.date >= range.start && t.date <= range.end;
+        const isFutureDate = t.date > range.end;
+        
+        // "Current" includes:
+        // 1. Transactions strictly inside the date range
+        // 2. Transactions in the future that are regular (not installment/recurring) - per user request
+        if (type === 'current') {
+            return inRange || (isFutureDate && !t.isRecurring && !t.isInstallment);
+        }
+
+        // "Future" includes ONLY:
+        // Transactions in the future that ARE installment/recurring
+        if (type === 'future') {
+            return isFutureDate && (t.isRecurring || !!t.isInstallment);
+        }
+
+        return false;
+    }).sort((a, b) => type === 'future' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date));
+  };
+
+  const getTotal = (bank: string, type: 'current' | 'future' | 'reconciled') => {
+      return getDetailTransactions(bank, type).reduce((sum, t) => sum + t.amount, 0);
+  };
 
   return (
     <div className="space-y-8 pb-16">
@@ -143,7 +187,7 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
 
                 <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 overflow-hidden flex flex-col max-h-[480px] shadow-sm">
                     <div className="p-3 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 flex justify-between">
-                        <span>本期帳單明細 (按結帳日過濾)</span>
+                        <span>本期帳單明細 (含本期未出帳與單筆消費)</span>
                         <span className="text-indigo-600">本期已核: ${reconciledTotalInCycle.toLocaleString()}</span>
                     </div>
                     <div className="overflow-y-auto flex-1 p-3 space-y-2">
@@ -214,11 +258,11 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
                           <div className="p-4 bg-indigo-50/50 flex justify-between items-center sticky top-0 border-b border-indigo-100/50">
                               <span className="text-xs font-black text-indigo-600 uppercase tracking-widest">本期帳單明細</span>
                               <span className="font-black text-indigo-700 text-lg">
-                                ${transactions.filter(t => t.cardBank === selectedCardDetail && !t.isReconciled && (!getCycleRange(selectedCardDetail, selectedStatementMonth) || (t.date >= getCycleRange(selectedCardDetail, selectedStatementMonth)!.start && t.date <= getCycleRange(selectedCardDetail, selectedStatementMonth)!.end))).reduce((s,t)=>s+t.amount,0).toLocaleString()}
+                                ${getTotal(selectedCardDetail, 'current').toLocaleString()}
                               </span>
                           </div>
                           <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                             {transactions.filter(t => t.cardBank === selectedCardDetail && !t.isReconciled && (!getCycleRange(selectedCardDetail, selectedStatementMonth) || (t.date >= getCycleRange(selectedCardDetail, selectedStatementMonth)!.start && t.date <= getCycleRange(selectedCardDetail, selectedStatementMonth)!.end))).map(t => (
+                             {getDetailTransactions(selectedCardDetail, 'current').map(t => (
                                  <div key={t.id} onClick={()=>onToggleReconcile(t.id)} className="p-3 bg-white border border-slate-100 rounded-2xl hover:border-indigo-300 cursor-pointer flex justify-between group transition-all">
                                      <div>
                                          <p className="text-sm font-bold text-slate-700 flex items-center gap-1.5">{t.description}{t.isRecurring && <RefreshCw size={10} className="text-amber-500" />}</p>
@@ -235,11 +279,11 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
                           <div className="p-4 bg-amber-50/50 flex justify-between items-center sticky top-0 border-b border-amber-100/50">
                               <span className="text-xs font-black text-amber-600 uppercase tracking-widest">未來分期金額</span>
                               <span className="font-black text-amber-700 text-lg">
-                                ${transactions.filter(t => t.cardBank === selectedCardDetail && !t.isReconciled && getCycleRange(selectedCardDetail, selectedStatementMonth) && t.date > getCycleRange(selectedCardDetail, selectedStatementMonth)!.end).reduce((s,t)=>s+t.amount,0).toLocaleString()}
+                                ${getTotal(selectedCardDetail, 'future').toLocaleString()}
                               </span>
                           </div>
                           <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                             {transactions.filter(t => t.cardBank === selectedCardDetail && !t.isReconciled && getCycleRange(selectedCardDetail, selectedStatementMonth) && t.date > getCycleRange(selectedCardDetail, selectedStatementMonth)!.end).map(t => (
+                             {getDetailTransactions(selectedCardDetail, 'future').map(t => (
                                  <div key={t.id} className="p-3 bg-white/70 border border-slate-100 rounded-2xl flex justify-between">
                                      <div>
                                          <p className="text-sm font-bold text-slate-700 flex items-center gap-1">{t.description}{t.isRecurring && <RefreshCw size={10} className="text-amber-500" />}</p>
@@ -256,11 +300,11 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
                           <div className="p-4 bg-emerald-50/50 flex justify-between items-center sticky top-0 border-b border-emerald-100/50">
                               <span className="text-xs font-black text-emerald-600 uppercase tracking-widest">本期已核銷</span>
                               <span className="font-black text-emerald-700 text-lg">
-                                ${transactions.filter(t => t.cardBank === selectedCardDetail && t.isReconciled).reduce((s,t)=>s+t.amount,0).toLocaleString()}
+                                ${getTotal(selectedCardDetail, 'reconciled').toLocaleString()}
                               </span>
                           </div>
                           <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                             {transactions.filter(t => t.cardBank === selectedCardDetail && t.isReconciled).map(t => (
+                             {getDetailTransactions(selectedCardDetail, 'reconciled').map(t => (
                                  <div key={t.id} onClick={()=>onToggleReconcile(t.id)} className="p-3 bg-white/60 border border-emerald-100 rounded-2xl flex justify-between group cursor-pointer hover:border-rose-300 transition-all">
                                      <div>
                                          <p className="text-sm font-bold text-slate-400 line-through">{t.description}</p>

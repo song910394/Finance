@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Transaction, PaymentMethod, CardBank, Category } from '../types';
 import { getCategoryColor } from '../constants';
-import { Plus, Search, Trash2, Wand2, Calendar, Pencil, Camera, Loader2, Filter, LayoutList, ChevronDown, RefreshCcw, X } from 'lucide-react';
+import { Plus, Search, Trash2, Wand2, Calendar, Pencil, Camera, Loader2, Filter, LayoutList, ChevronDown, RefreshCcw, X, SplitSquareVertical } from 'lucide-react';
 import { suggestCategory, parseReceiptFromImage } from '../services/geminiService';
 
 interface TransactionListProps {
@@ -27,6 +27,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [filterCategory, setFilterCategory] = useState('');
   const [filterMethod, setFilterMethod] = useState('');
+  const [filterBank, setFilterBank] = useState('');
 
   const [currentPage, setCurrentPage] = useState(1);
   const [isAdding, setIsAdding] = useState(false);
@@ -38,8 +39,9 @@ const TransactionList: React.FC<TransactionListProps> = ({
   const [cardBank, setCardBank] = useState<string>('-');
   const [category, setCategory] = useState<string>('');
   const [description, setDescription] = useState('');
-  const [installments, setInstallments] = useState<number>(1);
+  const [installments, setInstallments] = useState<string>('3');
   const [isRecurring, setIsRecurring] = useState(false);
+  const [isInstallment, setIsInstallment] = useState(false);
   
   const [isAutoCategorizing, setIsAutoCategorizing] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -81,11 +83,12 @@ const TransactionList: React.FC<TransactionListProps> = ({
       if (filterType === 'year' && selectedYear && !t.date.startsWith(selectedYear)) return false;
       if (filterCategory && t.category !== filterCategory) return false;
       if (filterMethod && t.paymentMethod !== filterMethod) return false;
+      if (filterBank && t.cardBank !== filterBank) return false;
       const searchLower = searchTerm.toLowerCase();
       if (searchTerm && !(t.description.toLowerCase().includes(searchLower) || t.category.includes(searchTerm))) return false;
       return true;
     }).sort((a, b) => b.date.localeCompare(a.date));
-  }, [transactions, searchTerm, filterType, selectedMonth, selectedYear, filterCategory, filterMethod]);
+  }, [transactions, searchTerm, filterType, selectedMonth, selectedYear, filterCategory, filterMethod, filterBank]);
 
   const currentTransactions = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -95,20 +98,46 @@ const TransactionList: React.FC<TransactionListProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const totalAmount = parseFloat(amount);
-    const baseTx = { paymentMethod, cardBank: paymentMethod === PaymentMethod.CREDIT_CARD ? cardBank : '-', category, isReconciled: false, isRecurring };
+    const bankToUse = paymentMethod === PaymentMethod.CREDIT_CARD ? cardBank : '-';
+    // Reset flags if switching modes
+    const useRecurring = isRecurring && !isInstallment;
+    const useInstallment = isInstallment && !isRecurring && paymentMethod === PaymentMethod.CREDIT_CARD;
+
+    const baseTx = { 
+        paymentMethod, 
+        cardBank: bankToUse, 
+        category, 
+        isReconciled: false, 
+        isRecurring: useRecurring,
+        isInstallment: useInstallment
+    };
+
     if (editingId) {
         onEditTransaction(editingId, { ...baseTx, date, amount: totalAmount, description });
-    } else if (isRecurring) {
+    } else if (useRecurring) {
         onAddTransactions(Array.from({length: 12}).map((_, i) => {
             const d = new Date(date); d.setMonth(d.getMonth() + i);
-            return { ...baseTx, date: d.toISOString().split('T')[0], amount: totalAmount, description: i === 0 ? description : `${description} (固定支出)`, isRecurring: true };
+            return { ...baseTx, date: d.toISOString().split('T')[0], amount: totalAmount, description: i === 0 ? description : `${description} (固定支出)` };
         }));
-    } else if (installments > 1 && paymentMethod === PaymentMethod.CREDIT_CARD) {
-        const mon = Math.floor(totalAmount / installments);
-        onAddTransactions(Array.from({length: installments}).map((_, i) => {
-            const d = new Date(date); d.setMonth(d.getMonth() + i);
-            return { ...baseTx, date: d.toISOString().split('T')[0], amount: i === 0 ? totalAmount - (mon * (installments-1)) : mon, description: `${description} (${i + 1}/${installments})` };
-        }));
+    } else if (useInstallment) {
+        const count = parseInt(installments) || 1;
+        if (count > 1) {
+            const perPeriod = Math.floor(totalAmount / count);
+            const remainder = totalAmount % count;
+            onAddTransactions(Array.from({length: count}).map((_, i) => {
+                const d = new Date(date); d.setMonth(d.getMonth() + i);
+                // First installment takes the remainder
+                const currentAmount = i === 0 ? perPeriod + remainder : perPeriod;
+                return { 
+                    ...baseTx, 
+                    date: d.toISOString().split('T')[0], 
+                    amount: currentAmount, 
+                    description: `${description} (${i + 1}/${count})` 
+                };
+            }));
+        } else {
+            onAddTransaction({ ...baseTx, date, amount: totalAmount, description });
+        }
     } else {
         onAddTransaction({ ...baseTx, date, amount: totalAmount, description });
     }
@@ -116,8 +145,28 @@ const TransactionList: React.FC<TransactionListProps> = ({
     setEditingId(null);
   };
 
-  const openAdd = () => { setEditingId(null); setAmount(''); setDescription(''); setIsRecurring(false); setDate(new Date().toISOString().split('T')[0]); setIsAdding(true); };
-  const openEdit = (t: Transaction) => { setEditingId(t.id); setDate(t.date); setAmount(t.amount.toString()); setPaymentMethod(t.paymentMethod); setCardBank(t.cardBank); setCategory(t.category); setDescription(t.description); setIsRecurring(!!t.isRecurring); setIsAdding(true); };
+  const openAdd = () => { 
+    setEditingId(null); 
+    setAmount(''); 
+    setDescription(''); 
+    setIsRecurring(false); 
+    setIsInstallment(false);
+    setDate(new Date().toISOString().split('T')[0]); 
+    setIsAdding(true); 
+  };
+  
+  const openEdit = (t: Transaction) => { 
+    setEditingId(t.id); 
+    setDate(t.date); 
+    setAmount(t.amount.toString()); 
+    setPaymentMethod(t.paymentMethod); 
+    setCardBank(t.cardBank); 
+    setCategory(t.category); 
+    setDescription(t.description); 
+    setIsRecurring(!!t.isRecurring); 
+    setIsInstallment(!!t.isInstallment);
+    setIsAdding(true); 
+  };
 
   return (
     <div className="space-y-6">
@@ -157,6 +206,11 @@ const TransactionList: React.FC<TransactionListProps> = ({
               {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
           </select>
 
+          <select value={filterBank} onChange={e => setFilterBank(e.target.value)} className="px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-600 outline-none">
+              <option value="">所有銀行</option>
+              {cardBanks.filter(b => b !== '-').map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+
           <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-500 outline-none">
               <option value="">所有分類</option>
               {categories.map(c => <option key={c} value={c}>{c}</option>)}
@@ -172,9 +226,14 @@ const TransactionList: React.FC<TransactionListProps> = ({
           <div className="flex justify-between items-center mb-6">
              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><LayoutList className="text-indigo-500" /> {editingId ? '修改支出' : '新增支出'}</h3>
              <div className="flex gap-2">
-                <button type="button" onClick={() => setIsRecurring(!isRecurring)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isRecurring ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                <button type="button" onClick={() => { setIsRecurring(!isRecurring); setIsInstallment(false); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isRecurring ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
                     <RefreshCcw size={14} className={isRecurring ? 'animate-spin' : ''} /> 每月固定扣款
                 </button>
+                {paymentMethod === PaymentMethod.CREDIT_CARD && (
+                    <button type="button" onClick={() => { setIsInstallment(!isInstallment); setIsRecurring(false); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isInstallment ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                        <SplitSquareVertical size={14} /> 分期付款
+                    </button>
+                )}
                 <input type="file" accept="image/*" ref={receiptInputRef} className="hidden" onChange={handleReceiptUpload} />
                 <button type="button" onClick={() => receiptInputRef.current?.click()} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors">
                     {isScanning ? <Loader2 size={14} className="animate-spin"/> : <Camera size={14} />} 辨識收據
@@ -192,13 +251,21 @@ const TransactionList: React.FC<TransactionListProps> = ({
                     <input required type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-xl font-black focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="0" />
                 </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <div className="space-y-2">
                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest">支付方式</label>
-                    <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
+                    <select value={paymentMethod} onChange={e => { setPaymentMethod(e.target.value as PaymentMethod); if(e.target.value !== PaymentMethod.CREDIT_CARD) setIsInstallment(false); }} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
                         {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                 </div>
+                {paymentMethod === PaymentMethod.CREDIT_CARD && (
+                     <div className="space-y-2 animate-in slide-in-from-left-2">
+                        <label className="text-xs font-black text-indigo-400 uppercase tracking-widest">刷卡銀行</label>
+                        <select value={cardBank} onChange={e => setCardBank(e.target.value)} className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-700 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
+                            {cardBanks.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                    </div>
+                )}
                 <div className="space-y-2">
                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest">分類</label>
                     <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
@@ -206,6 +273,21 @@ const TransactionList: React.FC<TransactionListProps> = ({
                     </select>
                 </div>
             </div>
+
+            {isInstallment && (
+                 <div className="space-y-2 animate-in slide-in-from-right-2 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                    <label className="text-xs font-black text-indigo-500 uppercase tracking-widest">分期設定 (自動拆分金額)</label>
+                    <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-slate-600">總期數:</span>
+                        <input type="number" min="2" max="60" value={installments} onChange={e => setInstallments(e.target.value)} className="w-24 p-2 bg-white border border-indigo-200 rounded-lg text-center font-black text-indigo-600" />
+                        <span className="text-xs text-slate-400">期</span>
+                        <div className="flex-1 text-right text-xs text-slate-500">
+                           每期約 <span className="font-bold text-slate-800">${(parseFloat(amount) / parseInt(installments) || 0).toFixed(0)}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="space-y-2">
                 <label className="text-xs font-black text-slate-400 uppercase tracking-widest">用途說明</label>
                 <div className="flex gap-2">
@@ -228,6 +310,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
             <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
               <tr>
                 <th className="p-4">日期</th>
+                <th className="p-4">卡別</th>
                 <th className="p-4">分類</th>
                 <th className="p-4">金額</th>
                 <th className="p-4">說明</th>
@@ -238,9 +321,10 @@ const TransactionList: React.FC<TransactionListProps> = ({
               {currentTransactions.map(t => (
                 <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="p-4 text-xs text-slate-500 font-bold">{t.date}</td>
+                  <td className="p-4"><span className="text-xs font-bold text-slate-600">{t.cardBank}</span></td>
                   <td className="p-4"><span className="px-2.5 py-1 rounded-lg text-[10px] font-black text-white shadow-sm" style={{ backgroundColor: getCategoryColor(t.category) }}>{t.category}</span></td>
-                  <td className="p-4"><div className="flex items-center gap-2"><span className="font-black text-slate-800">${t.amount.toLocaleString()}</span>{t.isRecurring && <span className="p-1 bg-amber-50 text-amber-500 rounded-md border border-amber-100"><RefreshCcw size={10} /></span>}</div></td>
-                  <td className="p-4"><div className="flex flex-col"><span className="text-sm font-bold text-slate-700">{t.description}</span><span className="text-[10px] text-slate-400 font-bold">{t.paymentMethod} {t.cardBank !== '-' ? `(${t.cardBank})` : ''}</span></div></td>
+                  <td className="p-4"><div className="flex items-center gap-2"><span className="font-black text-slate-800">${t.amount.toLocaleString()}</span>{t.isRecurring && <span className="p-1 bg-amber-50 text-amber-500 rounded-md border border-amber-100"><RefreshCcw size={10} /></span>}{t.isInstallment && <span className="p-1 bg-indigo-50 text-indigo-500 rounded-md border border-indigo-100"><SplitSquareVertical size={10} /></span>}</div></td>
+                  <td className="p-4"><div className="flex flex-col"><span className="text-sm font-bold text-slate-700">{t.description}</span><span className="text-[10px] text-slate-400 font-bold">{t.paymentMethod}</span></div></td>
                   <td className="p-4 text-right"><div className="flex justify-end gap-1"><button onClick={() => openEdit(t)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"><Pencil size={14} /></button><button onClick={() => onDeleteTransaction(t.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 size={14} /></button></div></td>
                 </tr>
               ))}

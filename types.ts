@@ -35,7 +35,8 @@ export interface Transaction {
   category: Category;
   description: string;
   isReconciled: boolean;
-  isRecurring?: boolean; 
+  isRecurring?: boolean;
+  isInstallment?: boolean;
 }
 
 export interface CategorySummary {
