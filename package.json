@@ -13,7 +13,8 @@
     "@google/genai": "^1.30.0",
     "react-dom": "^19.2.0",
     "lucide-react": "^0.555.0",
-    "recharts": "^3.5.0"
+    "recharts": "^3.5.0",
+    "xlsx": "latest"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

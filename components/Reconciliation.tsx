@@ -58,37 +58,41 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
   };
 
   // Logic: Current Bill List
-  // Includes unbilled items that are:
-  // 1. Within the cycle range (if defined)
-  // 2. OR regular transactions (not recurring/installments) that date AFTER the cycle range (to satisfy user request)
-  // 3. OR everything if no cycle range is defined
+  // STRICTLY includes unreconciled items that are within the cycle range (Start Date <= Date <= End Date)
+  // Everything after End Date goes to Future, regardless of type.
   const candidateTransactions = useMemo(() => {
     if (selectedBank === '-') return [];
     const range = getCycleRange(selectedBank, selectedStatementMonth);
     
     return transactions.filter(t => {
       if (t.paymentMethod !== PaymentMethod.CREDIT_CARD || t.cardBank !== selectedBank || t.isReconciled) return false;
-      if (!range) return true;
+      if (!range) return true; // If no setting, show all unreconciled
       
-      const inRange = t.date >= range.start && t.date <= range.end;
-      const isRegularFuture = t.date > range.end && !t.isRecurring && !t.isInstallment;
-      
-      return inRange || isRegularFuture;
+      // Strict date range: previous_statement_day + 1 TO current_statement_day
+      return t.date >= range.start && t.date <= range.end;
     }).sort((a, b) => b.date.localeCompare(a.date));
   }, [transactions, selectedBank, selectedStatementMonth, cardSettings]);
 
+  // Logic: Discrepancy in Cycle
+  // (Statement Total Input) - (Sum of Unreconciled Candidate Transactions in Cycle)
+  // This allows the user to see if the "Remaining Items to Reconcile" matches the "Bill Total".
+  // If the user hasn't reconciled anything yet, Discrepancy = Bill - Sum(Candidates). Ideally 0 if app matches bill.
+  // Wait, if Discrepancy is 0, it means Bill = Candidates.
+  // If I verify one item (mark reconciled), it leaves candidates. Discrepancy becomes > 0.
+  const unreconciledSumInCycle = candidateTransactions.reduce((s, t) => s + t.amount, 0);
+  const targetTotal = parseFloat(statementTotal) || 0;
+  const discrepancy = targetTotal - unreconciledSumInCycle;
+
+  // For display in the list header (Total reconciled in this cycle)
   const reconciledTotalInCycle = useMemo(() => {
     if (selectedBank === '-') return 0;
     const range = getCycleRange(selectedBank, selectedStatementMonth);
     if (!range) return 0;
-
     return transactions
         .filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === selectedBank && t.isReconciled && t.date >= range.start && t.date <= range.end)
         .reduce((s, t) => s + t.amount, 0);
   }, [transactions, selectedBank, selectedStatementMonth, cardSettings]);
 
-  const targetTotal = parseFloat(statementTotal) || 0;
-  const discrepancy = targetTotal - reconciledTotalInCycle;
 
   const cardSummary = useMemo(() => {
     return cardBanks.filter(c => c !== '-').map(bank => {
@@ -117,17 +121,14 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
         const inRange = t.date >= range.start && t.date <= range.end;
         const isFutureDate = t.date > range.end;
         
-        // "Current" includes:
-        // 1. Transactions strictly inside the date range
-        // 2. Transactions in the future that are regular (not installment/recurring) - per user request
+        // "Current" includes: Strictly transactions inside the date range
         if (type === 'current') {
-            return inRange || (isFutureDate && !t.isRecurring && !t.isInstallment);
+            return inRange;
         }
 
-        // "Future" includes ONLY:
-        // Transactions in the future that ARE installment/recurring
+        // "Future" includes: Strictly transactions after the date range
         if (type === 'future') {
-            return isFutureDate && (t.isRecurring || !!t.isInstallment);
+            return isFutureDate;
         }
 
         return false;
@@ -181,13 +182,14 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
                     <div className={`p-6 rounded-3xl border-2 text-center transition-all ${Math.abs(discrepancy) < 1 && targetTotal > 0 ? 'bg-emerald-50 border-emerald-500 shadow-lg shadow-emerald-100' : 'bg-slate-50 border-slate-200'}`}>
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">週期內核對差額</span>
                         <h4 className={`text-3xl font-black mt-1 ${discrepancy === 0 && targetTotal > 0 ? 'text-emerald-600' : 'text-amber-500'}`}>${discrepancy.toLocaleString()}</h4>
-                        {discrepancy === 0 && targetTotal > 0 && <p className="text-[10px] text-emerald-600 font-bold mt-2 flex items-center justify-center gap-1"><CheckSquare size={12}/> 本期帳目已結平</p>}
+                        <p className="text-[10px] text-slate-400 mt-2">(帳單總額 - 未核銷項目總和)</p>
+                        {discrepancy === 0 && targetTotal > 0 && <p className="text-[10px] text-emerald-600 font-bold mt-2 flex items-center justify-center gap-1"><CheckSquare size={12}/> 帳目一致</p>}
                     </div>
                 </div>
 
                 <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 overflow-hidden flex flex-col max-h-[480px] shadow-sm">
                     <div className="p-3 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 flex justify-between">
-                        <span>本期帳單明細 (含本期未出帳與單筆消費)</span>
+                        <span>本期未核銷項目 (週期內)</span>
                         <span className="text-indigo-600">本期已核: ${reconciledTotalInCycle.toLocaleString()}</span>
                     </div>
                     <div className="overflow-y-auto flex-1 p-3 space-y-2">
@@ -207,7 +209,7 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
                         )) : (
                             <div className="h-full flex flex-col items-center justify-center text-slate-300 py-10 italic">
                                 <CreditCard size={48} className="opacity-10 mb-2" />
-                                <p className="text-sm">此週期暫無未對帳明細</p>
+                                <p className="text-sm">週期內無未核銷項目</p>
                                 <p className="text-[10px]">請確認上方「銀行」與「帳單月份」是否正確</p>
                             </div>
                         )}
@@ -256,7 +258,7 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
                       {/* 本期未出帳 */}
                       <div className="flex-1 flex flex-col min-h-0">
                           <div className="p-4 bg-indigo-50/50 flex justify-between items-center sticky top-0 border-b border-indigo-100/50">
-                              <span className="text-xs font-black text-indigo-600 uppercase tracking-widest">本期帳單明細</span>
+                              <span className="text-xs font-black text-indigo-600 uppercase tracking-widest">本期帳單明細 (週期內)</span>
                               <span className="font-black text-indigo-700 text-lg">
                                 ${getTotal(selectedCardDetail, 'current').toLocaleString()}
                               </span>
@@ -271,13 +273,16 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
                                      <span className="text-sm font-black text-slate-800">${t.amount.toLocaleString()}</span>
                                  </div>
                              ))}
+                             {getDetailTransactions(selectedCardDetail, 'current').length === 0 && (
+                                <p className="text-center text-slate-300 text-xs py-10 italic">本期無未核項目</p>
+                             )}
                           </div>
                       </div>
 
-                      {/* 未來分期 */}
+                      {/* 未來分期與消費 */}
                       <div className="flex-1 flex flex-col min-h-0 bg-slate-50/30">
                           <div className="p-4 bg-amber-50/50 flex justify-between items-center sticky top-0 border-b border-amber-100/50">
-                              <span className="text-xs font-black text-amber-600 uppercase tracking-widest">未來分期金額</span>
+                              <span className="text-xs font-black text-amber-600 uppercase tracking-widest">未來帳務 (下期起)</span>
                               <span className="font-black text-amber-700 text-lg">
                                 ${getTotal(selectedCardDetail, 'future').toLocaleString()}
                               </span>

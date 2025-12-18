@@ -2,8 +2,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Transaction, PaymentMethod, CardBank, Category } from '../types';
 import { getCategoryColor } from '../constants';
-import { Plus, Search, Trash2, Wand2, Calendar, Pencil, Camera, Loader2, Filter, LayoutList, ChevronDown, RefreshCcw, X, SplitSquareVertical } from 'lucide-react';
+import { Plus, Search, Trash2, Wand2, Calendar, Pencil, Camera, Loader2, Filter, LayoutList, ChevronDown, RefreshCcw, X, SplitSquareVertical, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { suggestCategory, parseReceiptFromImage } from '../services/geminiService';
+import * as XLSX from 'xlsx';
 
 interface TransactionListProps {
   transactions: Transaction[];
@@ -46,6 +47,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
   const [isAutoCategorizing, setIsAutoCategorizing] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const receiptInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const availableYears = useMemo(() => {
     const years = transactions.map(t => t.date.split('-')[0]);
@@ -77,6 +79,56 @@ const TransactionList: React.FC<TransactionListProps> = ({
     } catch (error) { alert("辨識失敗"); } finally { setIsScanning(false); }
   };
 
+  const handleExport = () => {
+    const dataToExport = transactions.map(t => ({
+      '日期': t.date,
+      '類別': t.category,
+      '金額': t.amount,
+      '說明': t.description,
+      '支付方式': t.paymentMethod,
+      '銀行': t.cardBank !== '-' ? t.cardBank : '',
+      '核銷狀態': t.isReconciled ? '已核銷' : '未核銷',
+      '固定支出': t.isRecurring ? '是' : '否',
+      '分期付款': t.isInstallment ? '是' : '否'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "記帳明細");
+    XLSX.writeFile(wb, `記帳明細_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws);
+
+      const newTransactions: Omit<Transaction, 'id'>[] = data.map((row: any) => ({
+        date: row['日期'] || new Date().toISOString().split('T')[0],
+        category: row['類別'] || '其他',
+        amount: parseFloat(row['金額']) || 0,
+        description: row['說明'] || '匯入項目',
+        paymentMethod: (Object.values(PaymentMethod).includes(row['支付方式']) ? row['支付方式'] : PaymentMethod.CASH) as PaymentMethod,
+        cardBank: row['銀行'] || '-',
+        isReconciled: row['核銷狀態'] === '已核銷',
+        isRecurring: row['固定支出'] === '是',
+        isInstallment: row['分期付款'] === '是'
+      }));
+
+      onAddTransactions(newTransactions);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      alert(`成功匯入 ${newTransactions.length} 筆資料`);
+    };
+    reader.readAsBinaryString(file);
+  };
+
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
       if (filterType === 'month' && selectedMonth && !t.date.startsWith(selectedMonth)) return false;
@@ -99,7 +151,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
     e.preventDefault();
     const totalAmount = parseFloat(amount);
     const bankToUse = paymentMethod === PaymentMethod.CREDIT_CARD ? cardBank : '-';
-    // Reset flags if switching modes
     const useRecurring = isRecurring && !isInstallment;
     const useInstallment = isInstallment && !isRecurring && paymentMethod === PaymentMethod.CREDIT_CARD;
 
@@ -126,7 +177,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
             const remainder = totalAmount % count;
             onAddTransactions(Array.from({length: count}).map((_, i) => {
                 const d = new Date(date); d.setMonth(d.getMonth() + i);
-                // First installment takes the remainder
                 const currentAmount = i === 0 ? perPeriod + remainder : perPeriod;
                 return { 
                     ...baseTx, 
@@ -215,10 +265,22 @@ const TransactionList: React.FC<TransactionListProps> = ({
               <option value="">所有分類</option>
               {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <button onClick={openAdd} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 font-bold text-sm ml-auto">
-              <Plus size={18} />
-              <span>記一筆</span>
-          </button>
+          
+          <div className="h-8 w-px bg-slate-200 mx-1"></div>
+
+          <div className="flex gap-2">
+            <button onClick={handleExport} className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-colors border border-emerald-100" title="匯出 Excel">
+                <Download size={18} />
+            </button>
+            <input type="file" ref={fileInputRef} onChange={handleImport} accept=".xlsx, .xls" className="hidden" />
+            <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors border border-blue-100" title="匯入 Excel">
+                <Upload size={18} />
+            </button>
+            <button onClick={openAdd} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 font-bold text-sm ml-auto">
+                <Plus size={18} />
+                <span>記一筆</span>
+            </button>
+          </div>
       </div>
 
       {isAdding && (
