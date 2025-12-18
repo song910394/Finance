@@ -1,3 +1,4 @@
+
 export enum PaymentMethod {
   CASH = '現金',
   CREDIT_CARD = '刷卡',
@@ -14,12 +15,16 @@ export enum CardBank {
   OTHER = '其他'
 }
 
-// Category is now dynamic, so we use string, but keep some constants for defaults
 export type Category = string;
 
 export const DEFAULT_CATEGORIES = [
   '食', '衣', '住', '行', '育', '樂', '其他', '信用卡出帳'
 ];
+
+export interface CardSetting {
+  statementDay: number; // 1-31
+  issuedMonths?: string[]; // 紀錄已核結出帳的月份 (格式: YYYY-MM)
+}
 
 export interface Transaction {
   id: string;
@@ -29,12 +34,8 @@ export interface Transaction {
   cardBank: string;
   category: Category;
   description: string;
-  isReconciled: boolean; // Has this been matched with a statement?
-}
-
-export interface MonthlySummary {
-  month: string;
-  total: number;
+  isReconciled: boolean;
+  isRecurring?: boolean; 
 }
 
 export interface CategorySummary {
@@ -47,4 +48,14 @@ export interface CategorySummary {
 export interface AppSettings {
   budget: number;
   categories: string[];
+  cardBanks: string[];
+  cardSettings: Record<string, CardSetting>;
+}
+
+export interface BackupData {
+  transactions: Transaction[];
+  categories: string[];
+  budget: number;
+  cardBanks: string[];
+  cardSettings: Record<string, CardSetting>;
 }

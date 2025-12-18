@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { Transaction, Category } from "../types";
 
@@ -5,7 +6,8 @@ import { Transaction, Category } from "../types";
 const getAI = () => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) throw new Error("API Key not found");
-  return new GoogleGenAI({ apiKey });
+  // Initialize GoogleGenAI client with the required object structure
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 // Helper to convert File to Base64
@@ -30,12 +32,13 @@ export const suggestCategory = async (description: string, availableCategories: 
     const ai = getAI();
     const categoriesStr = availableCategories.join(", ");
     
-    // Using a lighter model for quick classification
+    // Using gemini-3-flash-preview as recommended for basic text tasks
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Categorize this expense description into one of these exact categories: [${categoriesStr}]. Description: "${description}". Return only the category name directly.`,
     });
     
+    // Access .text property directly (do not use text() method)
     const text = response.text?.trim();
     if (text && availableCategories.includes(text)) {
       return text;
@@ -73,13 +76,14 @@ export const getSpendingInsight = async (transactions: Transaction[], budget: nu
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
         thinkingConfig: { thinkingBudget: 0 } // Disable thinking for faster simple text response
       }
     });
 
+    // Access .text property directly
     return response.text || "無法生成分析報告。";
   } catch (error) {
     console.error("Gemini insight failed", error);
@@ -109,7 +113,7 @@ export const parseBillFromImage = async (file: File): Promise<any[]> => {
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: {
         parts: [
           {
@@ -123,6 +127,7 @@ export const parseBillFromImage = async (file: File): Promise<any[]> => {
       }
     });
 
+    // Access .text property directly
     let jsonStr = response.text || "";
     // Clean markdown code blocks if present
     jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -153,7 +158,7 @@ export const parseReceiptFromImage = async (file: File): Promise<{date: string, 
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: {
         parts: [
           {
@@ -167,6 +172,7 @@ export const parseReceiptFromImage = async (file: File): Promise<{date: string, 
       }
     });
 
+    // Access .text property directly
     let jsonStr = response.text || "";
     jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
     

@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { LayoutDashboard, List, CreditCard, PieChart, Settings as SettingsIcon, Cloud, CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
 import TransactionList from './components/TransactionList';
 import Dashboard from './components/Dashboard';
 import Reconciliation from './components/Reconciliation';
 import Settings from './components/Settings';
-import { Transaction, DEFAULT_CATEGORIES, CardBank } from './types';
+import { Transaction, DEFAULT_CATEGORIES, CardBank, CardSetting } from './types';
 import { INITIAL_TRANSACTIONS, GOOGLE_SCRIPT_URL } from './constants';
 import { saveToGoogleSheet, loadFromGoogleSheet } from './services/googleSheetService';
 
@@ -20,49 +21,37 @@ type SyncStatus = 'idle' | 'syncing' | 'saved' | 'error';
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DASHBOARD);
   
-  // Data State
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [cardBanks, setCardBanks] = useState<string[]>(Object.values(CardBank));
   const [budget, setBudget] = useState<number>(50000);
+  const [cardSettings, setCardSettings] = useState<Record<string, CardSetting>>({});
 
-  // Sync State
-  // Initialize with the hardcoded URL if available
   const [googleScriptUrl, setGoogleScriptUrl] = useState(GOOGLE_SCRIPT_URL);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [lastSyncedTime, setLastSyncedTime] = useState<string>('');
   
-  // Refs to control update loops
   const isRemoteUpdate = useRef(false);
   const isFirstMount = useRef(true);
 
-  // 1. Initialize: Load URL from local storage or constant and Auto-Load Data
   useEffect(() => {
-    // Priority: Constant -> LocalStorage
-    // We strictly use GOOGLE_SCRIPT_URL if present to ensure the user is connected to the correct backend
     const urlToUse = GOOGLE_SCRIPT_URL || localStorage.getItem('google_script_url');
-    
     if (urlToUse) {
       setGoogleScriptUrl(urlToUse);
-      // Sync local storage to match the hardcoded URL so Settings page is consistent
       if (GOOGLE_SCRIPT_URL) {
         localStorage.setItem('google_script_url', GOOGLE_SCRIPT_URL);
       }
-      // Auto load immediately on mount
       handleAutoLoad(urlToUse);
     }
   }, []);
 
-  // 2. Auto-Save Logic: Trigger when data changes
   useEffect(() => {
-    // Skip the very first render or if no URL configured
     if (isFirstMount.current) {
       isFirstMount.current = false;
       return;
     }
     if (!googleScriptUrl) return;
 
-    // Skip auto-save if the change came from a cloud download (prevent loop)
     if (isRemoteUpdate.current) {
       isRemoteUpdate.current = false;
       return;
@@ -70,10 +59,15 @@ function App() {
 
     setSyncStatus('syncing');
     
-    // Debounce: Wait 2 seconds after last change before saving
     const timer = setTimeout(async () => {
       try {
-        await saveToGoogleSheet(googleScriptUrl, { transactions, categories, budget });
+        await saveToGoogleSheet(googleScriptUrl, { 
+            transactions, 
+            categories, 
+            budget, 
+            cardBanks, 
+            cardSettings 
+        });
         setSyncStatus('saved');
         setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       } catch (error) {
@@ -83,35 +77,31 @@ function App() {
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [transactions, categories, budget, googleScriptUrl]);
+  }, [transactions, categories, budget, cardBanks, cardSettings, googleScriptUrl]);
 
   const handleAutoLoad = async (url: string) => {
     setSyncStatus('syncing');
     try {
       const data = await loadFromGoogleSheet(url);
       if (data) {
-        // Mark as remote update so we don't trigger auto-save immediately
         isRemoteUpdate.current = true; 
-        
         if (data.transactions) setTransactions(data.transactions);
         if (data.categories) setCategories(data.categories);
         if (data.budget) setBudget(data.budget);
+        if (data.cardBanks) setCardBanks(data.cardBanks);
+        if (data.cardSettings) setCardSettings(data.cardSettings);
         
         setSyncStatus('saved');
         setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       } else {
-        // Data is empty (new sheet), valid connection
         setSyncStatus('idle');
       }
     } catch (error) {
       console.error("Auto-load failed", error);
-      // Suppress full error UI if it's just initial load, but keep 'error' state for visibility if needed
-      // Or just log it and stay idle if preferred. Here we set error so user knows connectivity is bad.
       setSyncStatus('error');
     }
   };
 
-  // CRUD Handlers
   const addTransaction = (newTx: Omit<Transaction, 'id'>) => {
     const transaction: Transaction = {
       ...newTx,
@@ -120,24 +110,13 @@ function App() {
     setTransactions(prev => [transaction, ...prev]);
   };
 
-  const addTransactions = (newTxs: Omit<Transaction, 'id'>[], newCategories?: string[], newCardBanks?: string[]) => {
-    // 1. Merge new categories if provided
-    if (newCategories && newCategories.length > 0) {
-      setCategories(prev => {
-        const unique = new Set([...prev, ...newCategories]);
-        return Array.from(unique);
-      });
+  const addTransactions = (newTxs: Omit<Transaction, 'id'>[], newCats?: string[], newBanks?: string[]) => {
+    if (newCats && newCats.length > 0) {
+      setCategories(prev => Array.from(new Set([...prev, ...newCats])));
     }
-
-    // 2. Merge new card banks if provided
-    if (newCardBanks && newCardBanks.length > 0) {
-      setCardBanks(prev => {
-        const unique = new Set([...prev, ...newCardBanks]);
-        return Array.from(unique);
-      });
+    if (newBanks && newBanks.length > 0) {
+      setCardBanks(prev => Array.from(new Set([...prev, ...newBanks])));
     }
-
-    // 3. Add transactions
     const transactionsToAdd = newTxs.map(tx => ({
       ...tx,
       id: Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 5)
@@ -146,9 +125,7 @@ function App() {
   };
 
   const editTransaction = (id: string, updatedTx: Omit<Transaction, 'id'>) => {
-    setTransactions(prev => prev.map(t => 
-      t.id === id ? { ...t, ...updatedTx } : t
-    ));
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updatedTx } : t));
   };
 
   const deleteTransaction = (id: string) => {
@@ -156,9 +133,7 @@ function App() {
   };
 
   const toggleReconcile = (id: string) => {
-    setTransactions(prev => prev.map(t => 
-      t.id === id ? { ...t, isReconciled: !t.isReconciled } : t
-    ));
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, isReconciled: !t.isReconciled } : t));
   };
 
   const resetData = () => {
@@ -166,14 +141,13 @@ function App() {
     setCategories(DEFAULT_CATEGORIES);
     setCardBanks(Object.values(CardBank));
     setBudget(50000);
+    setCardSettings({});
   };
 
-  // Callback for Settings component to update URL or trigger manual sync
   const handleSettingsSync = async (url: string, isUpload: boolean) => {
-    setGoogleScriptUrl(url); // Update state so auto-save works for future changes
-    
+    setGoogleScriptUrl(url);
     if (isUpload) {
-      await saveToGoogleSheet(url, { transactions, categories, budget });
+      await saveToGoogleSheet(url, { transactions, categories, budget, cardBanks, cardSettings });
       setSyncStatus('saved');
       setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
     } else {
@@ -181,7 +155,6 @@ function App() {
     }
   };
 
-  // Render Helpers
   const renderSyncIcon = () => {
     if (!googleScriptUrl) return <span className="text-gray-300"><Cloud size={16}/></span>;
     if (syncStatus === 'syncing') return <RefreshCw size={16} className="animate-spin text-blue-500"/>;
@@ -192,8 +165,6 @@ function App() {
 
   return (
     <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-[#f8fafc] font-sans">
-      
-      {/* --- Desktop Sidebar --- */}
       <aside className="hidden lg:flex w-64 bg-white border-r border-gray-100 flex-col h-full shrink-0 z-20">
         <div className="p-6 border-b border-gray-50 flex items-center gap-3">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-blue-200 shadow-lg">
@@ -201,36 +172,14 @@ function App() {
             </div>
             <h1 className="text-xl font-extrabold text-gray-800 tracking-tight">H&S記帳</h1>
         </div>
-        
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <NavItem 
-            icon={<LayoutDashboard size={20} />} 
-            label={Tab.DASHBOARD} 
-            isActive={activeTab === Tab.DASHBOARD} 
-            onClick={() => setActiveTab(Tab.DASHBOARD)} 
-          />
-          <NavItem 
-            icon={<List size={20} />} 
-            label={Tab.TRANSACTIONS} 
-            isActive={activeTab === Tab.TRANSACTIONS} 
-            onClick={() => setActiveTab(Tab.TRANSACTIONS)} 
-          />
-          <NavItem 
-            icon={<CreditCard size={20} />} 
-            label={Tab.RECONCILIATION} 
-            isActive={activeTab === Tab.RECONCILIATION} 
-            onClick={() => setActiveTab(Tab.RECONCILIATION)} 
-          />
+          <NavItem icon={<LayoutDashboard size={20} />} label={Tab.DASHBOARD} isActive={activeTab === Tab.DASHBOARD} onClick={() => setActiveTab(Tab.DASHBOARD)} />
+          <NavItem icon={<List size={20} />} label={Tab.TRANSACTIONS} isActive={activeTab === Tab.TRANSACTIONS} onClick={() => setActiveTab(Tab.TRANSACTIONS)} />
+          <NavItem icon={<CreditCard size={20} />} label={Tab.RECONCILIATION} isActive={activeTab === Tab.RECONCILIATION} onClick={() => setActiveTab(Tab.RECONCILIATION)} />
           <div className="pt-4 mt-4 border-t border-gray-50">
-            <NavItem 
-                icon={<SettingsIcon size={20} />} 
-                label={Tab.SETTINGS} 
-                isActive={activeTab === Tab.SETTINGS} 
-                onClick={() => setActiveTab(Tab.SETTINGS)} 
-            />
+            <NavItem icon={<SettingsIcon size={20} />} label={Tab.SETTINGS} isActive={activeTab === Tab.SETTINGS} onClick={() => setActiveTab(Tab.SETTINGS)} />
           </div>
         </nav>
-
         <div className="p-4 bg-gray-50 border-t border-gray-100">
            <div className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-1">
               {renderSyncIcon()}
@@ -243,11 +192,7 @@ function App() {
            <p className="text-[10px] text-gray-400 mt-2">© 2024 H&S記帳</p>
         </div>
       </aside>
-
-      {/* --- Main Content Layout --- */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-        
-        {/* Mobile Header (Compact) */}
         <header className="lg:hidden bg-white border-b border-gray-100 px-4 py-3 flex justify-between items-center z-10 shrink-0">
             <div className="flex items-center gap-2">
                 <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white">
@@ -260,18 +205,9 @@ function App() {
                 {syncStatus === 'saved' && <span className="text-[10px] text-gray-500 font-mono">{lastSyncedTime}</span>}
             </div>
         </header>
-
-        {/* Scrollable Content Area */}
         <main className="flex-1 overflow-y-auto scrollbar-hide bg-[#f8fafc]">
-          {/* 
-              CRITICAL FIX: 
-              pb-24 ensures the last item isn't hidden behind the mobile bottom nav.
-              md:p-8 gives breathing room on desktop.
-          */}
           <div className="p-4 pb-28 md:p-8 md:pb-8 max-w-7xl mx-auto">
-            {activeTab === Tab.DASHBOARD && (
-              <Dashboard transactions={transactions} budget={budget} cardBanks={cardBanks} />
-            )}
+            {activeTab === Tab.DASHBOARD && <Dashboard transactions={transactions} budget={budget} cardBanks={cardBanks} />}
             {activeTab === Tab.TRANSACTIONS && (
               <TransactionList 
                 transactions={transactions} 
@@ -285,55 +221,37 @@ function App() {
               />
             )}
             {activeTab === Tab.RECONCILIATION && (
-              <Reconciliation 
-                transactions={transactions} 
-                cardBanks={cardBanks}
-                onToggleReconcile={toggleReconcile}
-                onAddTransaction={addTransaction}
-              />
+                <Reconciliation 
+                    transactions={transactions} 
+                    cardBanks={cardBanks} 
+                    cardSettings={cardSettings}
+                    onToggleReconcile={toggleReconcile} 
+                    onAddTransaction={addTransaction} 
+                    onUpdateCardSettings={setCardSettings}
+                />
             )}
             {activeTab === Tab.SETTINGS && (
-              <Settings 
-                  categories={categories}
-                  budget={budget}
-                  cardBanks={cardBanks}
-                  onUpdateCategories={setCategories}
-                  onUpdateBudget={setBudget}
-                  onUpdateCardBanks={setCardBanks}
-                  onCloudSync={handleSettingsSync}
-                  onResetData={resetData}
-              />
+                <Settings 
+                    categories={categories} 
+                    budget={budget} 
+                    cardBanks={cardBanks} 
+                    cardSettings={cardSettings}
+                    onUpdateCategories={setCategories} 
+                    onUpdateBudget={setBudget} 
+                    onUpdateCardBanks={setCardBanks} 
+                    onUpdateCardSettings={setCardSettings}
+                    onCloudSync={handleSettingsSync} 
+                    onResetData={resetData} 
+                />
             )}
           </div>
         </main>
-
-        {/* --- Mobile Bottom Navigation --- */}
         <nav className="lg:hidden bg-white/90 backdrop-blur-md border-t border-gray-200 fixed bottom-0 w-full z-50 pb-safe">
             <div className="grid grid-cols-4 h-16">
-                <MobileNavItem 
-                    icon={<LayoutDashboard size={20} />} 
-                    label={Tab.DASHBOARD} 
-                    isActive={activeTab === Tab.DASHBOARD} 
-                    onClick={() => setActiveTab(Tab.DASHBOARD)} 
-                />
-                <MobileNavItem 
-                    icon={<List size={20} />} 
-                    label={Tab.TRANSACTIONS} 
-                    isActive={activeTab === Tab.TRANSACTIONS} 
-                    onClick={() => setActiveTab(Tab.TRANSACTIONS)} 
-                />
-                <MobileNavItem 
-                    icon={<CreditCard size={20} />} 
-                    label="對帳" // Shortened for mobile
-                    isActive={activeTab === Tab.RECONCILIATION} 
-                    onClick={() => setActiveTab(Tab.RECONCILIATION)} 
-                />
-                <MobileNavItem 
-                    icon={<SettingsIcon size={20} />} 
-                    label={Tab.SETTINGS} 
-                    isActive={activeTab === Tab.SETTINGS} 
-                    onClick={() => setActiveTab(Tab.SETTINGS)} 
-                />
+                <MobileNavItem icon={<LayoutDashboard size={20} />} label={Tab.DASHBOARD} isActive={activeTab === Tab.DASHBOARD} onClick={() => setActiveTab(Tab.DASHBOARD)} />
+                <MobileNavItem icon={<List size={20} />} label={Tab.TRANSACTIONS} isActive={activeTab === Tab.TRANSACTIONS} onClick={() => setActiveTab(Tab.TRANSACTIONS)} />
+                <MobileNavItem icon={<CreditCard size={20} />} label="對帳" isActive={activeTab === Tab.RECONCILIATION} onClick={() => setActiveTab(Tab.RECONCILIATION)} />
+                <MobileNavItem icon={<SettingsIcon size={20} />} label={Tab.SETTINGS} isActive={activeTab === Tab.SETTINGS} onClick={() => setActiveTab(Tab.SETTINGS)} />
             </div>
         </nav>
       </div>
@@ -341,39 +259,17 @@ function App() {
   );
 }
 
-// Desktop Nav Item
 const NavItem = ({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) => (
-  <button
-    onClick={onClick}
-    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
-      isActive 
-        ? 'bg-blue-50 text-blue-600 font-semibold shadow-sm' 
-        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-    }`}
-  >
-    <span className={`${isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`}>
-      {icon}
-    </span>
+  <button onClick={onClick} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 group ${isActive ? 'bg-blue-50 text-blue-600 font-semibold shadow-sm' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}>
+    <span className={`${isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`}>{icon}</span>
     <span>{label}</span>
   </button>
 );
 
-// Mobile Nav Item (Compact)
 const MobileNavItem = ({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) => (
-    <button
-      onClick={onClick}
-      className="flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform"
-    >
-      <div className={`p-1.5 rounded-full transition-colors ${
-          isActive ? 'text-blue-600 bg-blue-50' : 'text-gray-400'
-      }`}>
-          {icon}
-      </div>
-      <span className={`text-[10px] font-medium ${
-          isActive ? 'text-blue-600' : 'text-gray-400'
-      }`}>
-          {label}
-      </span>
+    <button onClick={onClick} className="flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+      <div className={`p-1.5 rounded-full transition-colors ${isActive ? 'text-blue-600 bg-blue-50' : 'text-gray-400'}`}>{icon}</div>
+      <span className={`text-[10px] font-medium ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>{label}</span>
     </button>
   );
 
