@@ -1,8 +1,7 @@
 
 export enum PaymentMethod {
   CASH = '現金',
-  CREDIT_CARD = '刷卡',
-  TRANSFER = '轉帳'
+  CREDIT_CARD = '刷卡'
 }
 
 export enum CardBank {

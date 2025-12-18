@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Transaction, PaymentMethod, CardBank, Category } from '../types';
 import { getCategoryColor } from '../constants';
-import { Plus, Search, Trash2, Wand2, Calendar, Pencil, Camera, Loader2, Filter, LayoutList, ChevronDown, RefreshCcw, X, SplitSquareVertical, Download, Upload, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Trash2, Wand2, Calendar, Pencil, Camera, Loader2, Filter, LayoutList, ChevronDown, RefreshCcw, X, SplitSquareVertical, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
 import { suggestCategory, parseReceiptFromImage } from '../services/geminiService';
 import * as XLSX from 'xlsx';
 
@@ -17,7 +17,7 @@ interface TransactionListProps {
   onToggleReconcile: (id: string) => void;
 }
 
-const ITEMS_PER_PAGE = 25;
+const ITEMS_PER_PAGE = 20;
 
 const TransactionList: React.FC<TransactionListProps> = ({ 
   transactions, categories, cardBanks, onAddTransaction, onAddTransactions, onEditTransaction, onDeleteTransaction, onToggleReconcile
@@ -53,6 +53,11 @@ const TransactionList: React.FC<TransactionListProps> = ({
     const years = transactions.map(t => t.date.split('-')[0]);
     return Array.from(new Set([new Date().getFullYear().toString(), ...years])).sort((a, b) => b.localeCompare(a));
   }, [transactions]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterType, selectedMonth, selectedYear, filterCategory, filterMethod, filterBank]);
 
   const handleAutoCategorize = async () => {
     if (!description || !categories.length) return;
@@ -142,6 +147,8 @@ const TransactionList: React.FC<TransactionListProps> = ({
     }).sort((a, b) => b.date.localeCompare(a.date));
   }, [transactions, searchTerm, filterType, selectedMonth, selectedYear, filterCategory, filterMethod, filterBank]);
 
+  const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE);
+
   const currentTransactions = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     return filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE);
@@ -202,6 +209,8 @@ const TransactionList: React.FC<TransactionListProps> = ({
     setIsRecurring(false); 
     setIsInstallment(false);
     setDate(new Date().toISOString().split('T')[0]); 
+    // Default to first available category if not set
+    if (!category && categories.length > 0) setCategory(categories[0]);
     setIsAdding(true); 
   };
   
@@ -284,114 +293,155 @@ const TransactionList: React.FC<TransactionListProps> = ({
       </div>
 
       {isAdding && (
-        <div className="bg-white p-6 rounded-3xl shadow-xl border border-indigo-100 animate-fade-in relative">
-          <div className="flex justify-between items-center mb-6">
-             <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><LayoutList className="text-indigo-500" /> {editingId ? '修改支出' : '新增支出'}</h3>
-             <div className="flex gap-2">
-                <button type="button" onClick={() => { setIsRecurring(!isRecurring); setIsInstallment(false); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isRecurring ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                    <RefreshCcw size={14} className={isRecurring ? 'animate-spin' : ''} /> 每月固定扣款
-                </button>
-                {paymentMethod === PaymentMethod.CREDIT_CARD && (
-                    <button type="button" onClick={() => { setIsInstallment(!isInstallment); setIsRecurring(false); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isInstallment ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                        <SplitSquareVertical size={14} /> 分期付款
-                    </button>
-                )}
-                <input type="file" accept="image/*" ref={receiptInputRef} className="hidden" onChange={handleReceiptUpload} />
-                <button type="button" onClick={() => receiptInputRef.current?.click()} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors">
-                    {isScanning ? <Loader2 size={14} className="animate-spin"/> : <Camera size={14} />} 辨識收據
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-fade-in">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl relative my-auto">
+             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-3xl">
+                <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><LayoutList className="text-indigo-500" /> {editingId ? '修改支出' : '新增支出'}</h3>
+                <button type="button" onClick={() => setIsAdding(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400 hover:text-slate-600">
+                    <X size={20} />
                 </button>
              </div>
-          </div>
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">交易日期</label>
-                    <input required type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" />
-                </div>
-                <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">金額 (TWD)</label>
-                    <input required type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-xl font-black focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="0" />
-                </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">支付方式</label>
-                    <select value={paymentMethod} onChange={e => { setPaymentMethod(e.target.value as PaymentMethod); if(e.target.value !== PaymentMethod.CREDIT_CARD) setIsInstallment(false); }} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
-                        {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                </div>
-                {paymentMethod === PaymentMethod.CREDIT_CARD && (
-                     <div className="space-y-2 animate-in slide-in-from-left-2">
-                        <label className="text-xs font-black text-indigo-400 uppercase tracking-widest">刷卡銀行</label>
-                        <select value={cardBank} onChange={e => setCardBank(e.target.value)} className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-700 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
-                            {cardBanks.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                    </div>
-                )}
-                <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">分類</label>
-                    <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
-                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                </div>
-            </div>
-
-            {isInstallment && (
-                 <div className="space-y-2 animate-in slide-in-from-right-2 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
-                    <label className="text-xs font-black text-indigo-500 uppercase tracking-widest">分期設定 (自動拆分金額)</label>
-                    <div className="flex items-center gap-3">
-                        <span className="text-sm font-bold text-slate-600">總期數:</span>
-                        <input type="number" min="2" max="60" value={installments} onChange={e => setInstallments(e.target.value)} className="w-24 p-2 bg-white border border-indigo-200 rounded-lg text-center font-black text-indigo-600" />
-                        <span className="text-xs text-slate-400">期</span>
-                        <div className="flex-1 text-right text-xs text-slate-500">
-                           每期約 <span className="font-bold text-slate-800">${(parseFloat(amount) / parseInt(installments) || 0).toFixed(0)}</span>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="space-y-2">
-                <label className="text-xs font-black text-slate-400 uppercase tracking-widest">用途說明</label>
-                <div className="flex gap-2">
-                    <input required type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="輸入消費內容..." />
-                    <button type="button" onClick={handleAutoCategorize} className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors flex items-center justify-center gap-2 font-bold border border-slate-200">
-                        <Wand2 size={18} className={isAutoCategorizing ? 'animate-spin' : ''} /> AI
+             
+             <div className="p-6 max-h-[80vh] overflow-y-auto">
+                <div className="flex justify-end gap-2 mb-4">
+                    <button type="button" onClick={() => { setIsRecurring(!isRecurring); setIsInstallment(false); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isRecurring ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                        <RefreshCcw size={14} className={isRecurring ? 'animate-spin' : ''} /> 每月固定扣款
+                    </button>
+                    {paymentMethod === PaymentMethod.CREDIT_CARD && (
+                        <button type="button" onClick={() => { setIsInstallment(!isInstallment); setIsRecurring(false); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isInstallment ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                            <SplitSquareVertical size={14} /> 分期付款
+                        </button>
+                    )}
+                    <input type="file" accept="image/*" ref={receiptInputRef} className="hidden" onChange={handleReceiptUpload} />
+                    <button type="button" onClick={() => receiptInputRef.current?.click()} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors">
+                        {isScanning ? <Loader2 size={14} className="animate-spin"/> : <Camera size={14} />} 辨識收據
                     </button>
                 </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-              <button type="button" onClick={() => setIsAdding(false)} className="px-6 py-2.5 text-slate-500 hover:text-slate-800 font-bold">取消</button>
-              <button type="submit" className="px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all">確認儲存</button>
-            </div>
-          </form>
+
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">交易日期</label>
+                            <input required type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">金額 (TWD)</label>
+                            <input required type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-xl font-black focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="0" />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">支付方式</label>
+                            <select value={paymentMethod} onChange={e => { setPaymentMethod(e.target.value as PaymentMethod); if(e.target.value !== PaymentMethod.CREDIT_CARD) setIsInstallment(false); }} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
+                                {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                        </div>
+                        {paymentMethod === PaymentMethod.CREDIT_CARD && (
+                            <div className="space-y-2 animate-in slide-in-from-left-2">
+                                <label className="text-xs font-black text-indigo-400 uppercase tracking-widest">刷卡銀行</label>
+                                <select value={cardBank} onChange={e => setCardBank(e.target.value)} className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-700 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
+                                    {cardBanks.map(m => <option key={m} value={m}>{m}</option>)}
+                                </select>
+                            </div>
+                        )}
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">分類</label>
+                            <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
+                                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    {isInstallment && (
+                        <div className="space-y-2 animate-in slide-in-from-right-2 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                            <label className="text-xs font-black text-indigo-500 uppercase tracking-widest">分期設定 (自動拆分金額)</label>
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm font-bold text-slate-600">總期數:</span>
+                                <input type="number" min="2" max="60" value={installments} onChange={e => setInstallments(e.target.value)} className="w-24 p-2 bg-white border border-indigo-200 rounded-lg text-center font-black text-indigo-600" />
+                                <span className="text-xs text-slate-400">期</span>
+                                <div className="flex-1 text-right text-xs text-slate-500">
+                                每期約 <span className="font-bold text-slate-800">${(parseFloat(amount) / parseInt(installments) || 0).toFixed(0)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="space-y-2">
+                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest">用途說明</label>
+                        <div className="flex gap-2">
+                            <input required type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="輸入消費內容..." />
+                            <button type="button" onClick={handleAutoCategorize} className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors flex items-center justify-center gap-2 font-bold border border-slate-200">
+                                <Wand2 size={18} className={isAutoCategorizing ? 'animate-spin' : ''} /> AI
+                            </button>
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                        <button type="button" onClick={() => setIsAdding(false)} className="px-6 py-2.5 text-slate-500 hover:text-slate-800 font-bold">取消</button>
+                        <button type="submit" className="px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all">確認儲存</button>
+                    </div>
+                </form>
+             </div>
+          </div>
         </div>
       )}
 
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
-              <tr>
-                <th className="p-4">日期</th>
-                <th className="p-4">卡別</th>
-                <th className="p-4">分類</th>
-                <th className="p-4">金額</th>
-                <th className="p-4">說明</th>
-                <th className="p-4 text-right">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {currentTransactions.map(t => (
-                <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="p-4 text-xs text-slate-500 font-bold">{t.date}</td>
-                  <td className="p-4"><span className="text-xs font-bold text-slate-600">{t.cardBank}</span></td>
-                  <td className="p-4"><span className="px-2.5 py-1 rounded-lg text-[10px] font-black text-white shadow-sm" style={{ backgroundColor: getCategoryColor(t.category) }}>{t.category}</span></td>
-                  <td className="p-4"><div className="flex items-center gap-2"><span className="font-black text-slate-800">${t.amount.toLocaleString()}</span>{t.isRecurring && <span className="p-1 bg-amber-50 text-amber-500 rounded-md border border-amber-100"><RefreshCcw size={10} /></span>}{t.isInstallment && <span className="p-1 bg-indigo-50 text-indigo-500 rounded-md border border-indigo-100"><SplitSquareVertical size={10} /></span>}</div></td>
-                  <td className="p-4"><div className="flex flex-col"><span className="text-sm font-bold text-slate-700">{t.description}</span><span className="text-[10px] text-slate-400 font-bold">{t.paymentMethod}</span></div></td>
-                  <td className="p-4 text-right"><div className="flex justify-end gap-1"><button onClick={() => openEdit(t)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"><Pencil size={14} /></button><button onClick={() => onDeleteTransaction(t.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 size={14} /></button></div></td>
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+          <div className="flex-1 overflow-x-auto">
+            <table className="w-full text-left">
+                <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
+                <tr>
+                    <th className="p-4 whitespace-nowrap">日期</th>
+                    <th className="p-4 whitespace-nowrap">卡別</th>
+                    <th className="p-4 whitespace-nowrap">分類</th>
+                    <th className="p-4 whitespace-nowrap">金額</th>
+                    <th className="p-4 min-w-[200px]">說明</th>
+                    <th className="p-4 text-right whitespace-nowrap">操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                {currentTransactions.map(t => (
+                    <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-4 text-xs text-slate-500 font-bold whitespace-nowrap">{t.date}</td>
+                    <td className="p-4 whitespace-nowrap"><span className="text-xs font-bold text-slate-600">{t.cardBank}</span></td>
+                    <td className="p-4 whitespace-nowrap"><span className="px-2.5 py-1 rounded-lg text-[10px] font-black text-white shadow-sm" style={{ backgroundColor: getCategoryColor(t.category) }}>{t.category}</span></td>
+                    <td className="p-4 whitespace-nowrap"><div className="flex items-center gap-2"><span className="font-black text-slate-800">${t.amount.toLocaleString()}</span>{t.isRecurring && <span className="p-1 bg-amber-50 text-amber-500 rounded-md border border-amber-100"><RefreshCcw size={10} /></span>}{t.isInstallment && <span className="p-1 bg-indigo-50 text-indigo-500 rounded-md border border-indigo-100"><SplitSquareVertical size={10} /></span>}</div></td>
+                    <td className="p-4"><div className="flex flex-col"><span className="text-sm font-bold text-slate-700">{t.description}</span><span className="text-[10px] text-slate-400 font-bold">{t.paymentMethod}</span></div></td>
+                    <td className="p-4 text-right whitespace-nowrap"><div className="flex justify-end gap-1"><button onClick={() => openEdit(t)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"><Pencil size={14} /></button><button onClick={() => onDeleteTransaction(t.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 size={14} /></button></div></td>
+                    </tr>
+                ))}
+                {currentTransactions.length === 0 && (
+                    <tr>
+                        <td colSpan={6} className="text-center py-12 text-slate-400 text-sm font-medium">
+                            沒有符合條件的資料
+                        </td>
+                    </tr>
+                )}
+                </tbody>
+            </table>
+          </div>
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-white">
+                <button 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    <ChevronLeft size={16} /> 上一頁
+                </button>
+                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                    第 <span className="text-indigo-600 text-sm mx-1">{currentPage}</span> / {totalPages} 頁
+                </span>
+                <button 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    下一頁 <ChevronRight size={16} />
+                </button>
+            </div>
+          )}
       </div>
     </div>
   );

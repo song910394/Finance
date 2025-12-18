@@ -32,9 +32,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks }
 
   const totalExpense = useMemo(() => filteredTransactions.reduce((acc, t) => acc + t.amount, 0), [filteredTransactions]);
   
-  const cashAndTransferTotal = useMemo(() => {
+  const cashTotal = useMemo(() => {
     return filteredTransactions
-      .filter(t => t.paymentMethod === PaymentMethod.CASH || t.paymentMethod === PaymentMethod.TRANSFER)
+      .filter(t => t.paymentMethod === PaymentMethod.CASH)
       .reduce((sum, t) => sum + t.amount, 0);
   }, [filteredTransactions]);
 
@@ -140,10 +140,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks }
         <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
           <div className="flex items-center gap-3 mb-4">
              <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Banknote size={20} /></div>
-             <p className="text-xs font-black text-slate-400 uppercase tracking-widest">現金/轉帳 支出</p>
+             <p className="text-xs font-black text-slate-400 uppercase tracking-widest">現金 支出</p>
           </div>
-          <h3 className="text-3xl font-black text-slate-800">${cashAndTransferTotal.toLocaleString()}</h3>
-          <p className="text-[10px] text-slate-400 mt-1 font-bold">佔總開銷 {totalExpense > 0 ? Math.round((cashAndTransferTotal/totalExpense)*100) : 0}%</p>
+          <h3 className="text-3xl font-black text-slate-800">${cashTotal.toLocaleString()}</h3>
+          <p className="text-[10px] text-slate-400 mt-1 font-bold">佔總開銷 {totalExpense > 0 ? Math.round((cashTotal/totalExpense)*100) : 0}%</p>
         </div>
 
         <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
@@ -184,9 +184,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks }
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-[450px]">
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-[450px] flex flex-col">
               <h3 className="text-lg font-black text-slate-800 mb-6">消費比例圖</h3>
-              <div className="h-80 w-full">
+              {/* Fix for Recharts width(-1) warning: Added inline styles to container */}
+              <div className="flex-1 w-full" style={{ minHeight: '300px' }}>
                   <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                           <Pie
