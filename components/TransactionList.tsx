@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Transaction, PaymentMethod, CardBank, Category } from '../types';
 import { getCategoryColor } from '../constants';
-import { Plus, Search, Trash2, Wand2, Calendar, Pencil, Camera, Loader2, Filter, LayoutList, ChevronDown, RefreshCcw, X, SplitSquareVertical, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, Trash2, Wand2, Calendar, Pencil, Camera, Loader2, Filter, LayoutList, ChevronDown, RefreshCcw, X, SplitSquareVertical, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight, CreditCard, Wallet } from 'lucide-react';
 import { suggestCategory, parseReceiptFromImage } from '../services/geminiService';
 import * as XLSX from 'xlsx';
 
@@ -228,8 +228,8 @@ const TransactionList: React.FC<TransactionListProps> = ({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-3 items-center bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-wrap gap-3 items-center bg-white p-3 md:p-4 rounded-3xl border border-slate-100 shadow-sm">
           <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input
@@ -240,6 +240,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                   className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs text-slate-700"
               />
           </div>
+          {/* Mobile Filter Toggles - Simple Dropdowns for space saving */}
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-2 py-1">
               <select value={filterType} onChange={e => setFilterType(e.target.value as any)} className="bg-transparent text-[10px] font-black text-slate-500 uppercase outline-none cursor-pointer">
                   <option value="month">按月</option>
@@ -260,24 +261,27 @@ const TransactionList: React.FC<TransactionListProps> = ({
               )}
           </div>
           
-          <select value={filterMethod} onChange={e => setFilterMethod(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-500 outline-none">
-              <option value="">所有支付</option>
-              {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
+          {/* Hidden on very small screens, shown on md+ or wrapped */}
+          <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
+             <select value={filterMethod} onChange={e => setFilterMethod(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-500 outline-none flex-shrink-0">
+                  <option value="">所有支付</option>
+                  {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
 
-          <select value={filterBank} onChange={e => setFilterBank(e.target.value)} className="px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-600 outline-none">
-              <option value="">所有銀行</option>
-              {cardBanks.filter(b => b !== '-').map(b => <option key={b} value={b}>{b}</option>)}
-          </select>
+              <select value={filterBank} onChange={e => setFilterBank(e.target.value)} className="px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-600 outline-none flex-shrink-0">
+                  <option value="">所有銀行</option>
+                  {cardBanks.filter(b => b !== '-').map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
 
-          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-500 outline-none">
-              <option value="">所有分類</option>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+              <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-500 outline-none flex-shrink-0">
+                  <option value="">所有分類</option>
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+          </div>
           
-          <div className="h-8 w-px bg-slate-200 mx-1"></div>
+          <div className="hidden md:block h-8 w-px bg-slate-200 mx-1"></div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full md:w-auto justify-end">
             <button onClick={handleExport} className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-colors border border-emerald-100" title="匯出 Excel">
                 <Download size={18} />
             </button>
@@ -285,7 +289,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
             <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors border border-blue-100" title="匯入 Excel">
                 <Upload size={18} />
             </button>
-            <button onClick={openAdd} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 font-bold text-sm ml-auto">
+            <button onClick={openAdd} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 font-bold text-sm ml-auto">
                 <Plus size={18} />
                 <span>記一筆</span>
             </button>
@@ -303,13 +307,13 @@ const TransactionList: React.FC<TransactionListProps> = ({
              </div>
              
              <div className="p-6 max-h-[80vh] overflow-y-auto">
-                <div className="flex justify-end gap-2 mb-4">
+                <div className="flex flex-wrap justify-end gap-2 mb-4">
                     <button type="button" onClick={() => { setIsRecurring(!isRecurring); setIsInstallment(false); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isRecurring ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                        <RefreshCcw size={14} className={isRecurring ? 'animate-spin' : ''} /> 每月固定扣款
+                        <RefreshCcw size={14} className={isRecurring ? 'animate-spin' : ''} /> 每月固定
                     </button>
                     {paymentMethod === PaymentMethod.CREDIT_CARD && (
                         <button type="button" onClick={() => { setIsInstallment(!isInstallment); setIsRecurring(false); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isInstallment ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                            <SplitSquareVertical size={14} /> 分期付款
+                            <SplitSquareVertical size={14} /> 分期
                         </button>
                     )}
                     <input type="file" accept="image/*" ref={receiptInputRef} className="hidden" onChange={handleReceiptUpload} />
@@ -385,7 +389,8 @@ const TransactionList: React.FC<TransactionListProps> = ({
         </div>
       )}
 
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+      {/* Desktop Table View (Hidden on Mobile) */}
+      <div className="hidden md:block bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
           <div className="flex-1 overflow-x-auto">
             <table className="w-full text-left">
                 <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
@@ -420,7 +425,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
             </table>
           </div>
           
-          {/* Pagination Controls */}
+          {/* Pagination Controls (Desktop) */}
           {totalPages > 1 && (
             <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-white">
                 <button 
@@ -439,6 +444,68 @@ const TransactionList: React.FC<TransactionListProps> = ({
                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                     下一頁 <ChevronRight size={16} />
+                </button>
+            </div>
+          )}
+      </div>
+
+      {/* Mobile Card View (Visible on small screens) */}
+      <div className="md:hidden space-y-2 pb-20">
+          {currentTransactions.length > 0 ? (
+              currentTransactions.map(t => (
+                  <div key={t.id} className="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-1.5">
+                      <div className="flex justify-between items-start">
+                          <div className="flex flex-col gap-1 w-[70%]">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-black text-slate-400">{t.date.slice(5)}</span>
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-black text-white shadow-sm" style={{ backgroundColor: getCategoryColor(t.category) }}>{t.category}</span>
+                                {t.paymentMethod === PaymentMethod.CREDIT_CARD ? (
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded"><CreditCard size={10} /> {t.cardBank}</span>
+                                ) : (
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded"><Wallet size={10} /> 現金</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-sm font-bold text-slate-800 truncate">{t.description}</span>
+                                {t.isRecurring && <span className="p-0.5 bg-amber-50 text-amber-500 rounded border border-amber-100"><RefreshCcw size={10} /></span>}
+                                {t.isInstallment && <span className="p-0.5 bg-indigo-50 text-indigo-500 rounded border border-indigo-100"><SplitSquareVertical size={10} /></span>}
+                              </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                              <span className="text-base font-black text-slate-800">${t.amount.toLocaleString()}</span>
+                              <div className="flex gap-1">
+                                  <button onClick={() => openEdit(t)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"><Pencil size={14} /></button>
+                                  <button onClick={() => onDeleteTransaction(t.id)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md"><Trash2 size={14} /></button>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+              ))
+          ) : (
+              <div className="text-center py-10 text-slate-400 text-sm font-medium bg-white rounded-2xl border border-slate-100">
+                  沒有符合條件的資料
+              </div>
+          )}
+
+          {/* Pagination Controls (Mobile) */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-2">
+                <button 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="flex items-center justify-center w-8 h-8 bg-white rounded-xl border border-slate-100 text-slate-600 disabled:opacity-50"
+                >
+                    <ChevronLeft size={16} />
+                </button>
+                <span className="text-xs font-black text-slate-400">
+                    {currentPage} / {totalPages}
+                </span>
+                <button 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="flex items-center justify-center w-8 h-8 bg-white rounded-xl border border-slate-100 text-slate-600 disabled:opacity-50"
+                >
+                    <ChevronRight size={16} />
                 </button>
             </div>
           )}
