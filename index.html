@@ -18,6 +18,11 @@
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2654/2654524.png">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2654/2654524.png">
 
+    <!-- Polyfill for process.env (Required for browser environments without build tools) -->
+    <script>
+      window.process = { env: { API_KEY: "" } };
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -47,7 +52,7 @@
   </head>
   <body>
     <div id="root"></div>
-    <!-- 關鍵修正：確保這裡使用 ./ 代表相對路徑，避免 GitHub Pages 子目錄路徑錯誤 -->
+    <!-- 使用相對路徑引進 index.tsx -->
     <script type="module" src="./index.tsx"></script>
   </body>
 </html>
