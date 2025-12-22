@@ -2,8 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Transaction, PaymentMethod, CardBank, Category } from '../types';
 import { getCategoryColor } from '../constants';
-import { Plus, Search, Trash2, Wand2, Calendar, Pencil, Camera, Loader2, Filter, LayoutList, ChevronDown, RefreshCcw, X, SplitSquareVertical, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight, CreditCard, Wallet } from 'lucide-react';
-import { suggestCategory, parseReceiptFromImage } from '../services/geminiService';
+import { Plus, Search, Trash2, Calendar, Pencil, LayoutList, ChevronDown, RefreshCcw, X, SplitSquareVertical, Download, Upload, ChevronLeft, ChevronRight, CreditCard, Wallet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface TransactionListProps {
@@ -36,17 +35,14 @@ const TransactionList: React.FC<TransactionListProps> = ({
   
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CASH);
-  const [cardBank, setCardBank] = useState<string>('-');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CREDIT_CARD);
+  const [cardBank, setCardBank] = useState<string>('台新');
   const [category, setCategory] = useState<string>('');
   const [description, setDescription] = useState('');
   const [installments, setInstallments] = useState<string>('3');
   const [isRecurring, setIsRecurring] = useState(false);
   const [isInstallment, setIsInstallment] = useState(false);
   
-  const [isAutoCategorizing, setIsAutoCategorizing] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const receiptInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const availableYears = useMemo(() => {
@@ -58,31 +54,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterType, selectedMonth, selectedYear, filterCategory, filterMethod, filterBank]);
-
-  const handleAutoCategorize = async () => {
-    if (!description || !categories.length) return;
-    setIsAutoCategorizing(true);
-    try {
-      const suggested = await suggestCategory(description, categories);
-      if (suggested) setCategory(suggested);
-    } catch (error) { console.error(error); } finally { setIsAutoCategorizing(false); }
-  };
-
-  const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setIsScanning(true);
-    try {
-      const result = await parseReceiptFromImage(file);
-      if (result) {
-        setDate(result.date);
-        setAmount(result.amount.toString());
-        setDescription(result.description);
-        const suggested = await suggestCategory(result.description, categories);
-        if (suggested) setCategory(suggested);
-      }
-    } catch (error) { alert("辨識失敗"); } finally { setIsScanning(false); }
-  };
 
   const handleExport = () => {
     const dataToExport = transactions.map(t => ({
@@ -205,6 +176,8 @@ const TransactionList: React.FC<TransactionListProps> = ({
   const openAdd = () => { 
     setEditingId(null); 
     setAmount(''); 
+    setPaymentMethod(PaymentMethod.CREDIT_CARD);
+    setCardBank('台新');
     setDescription(''); 
     setIsRecurring(false); 
     setIsInstallment(false);
@@ -291,7 +264,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
             </button>
             <button onClick={openAdd} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 font-bold text-sm ml-auto">
                 <Plus size={18} />
-                <span>記一筆</span>
+                <span>新增支出</span>
             </button>
           </div>
       </div>
@@ -316,10 +289,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
                             <SplitSquareVertical size={14} /> 分期
                         </button>
                     )}
-                    <input type="file" accept="image/*" ref={receiptInputRef} className="hidden" onChange={handleReceiptUpload} />
-                    <button type="button" onClick={() => receiptInputRef.current?.click()} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors">
-                        {isScanning ? <Loader2 size={14} className="animate-spin"/> : <Camera size={14} />} 辨識收據
-                    </button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
@@ -372,12 +341,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
 
                     <div className="space-y-2">
                         <label className="text-xs font-black text-slate-400 uppercase tracking-widest">用途說明</label>
-                        <div className="flex gap-2">
-                            <input required type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="輸入消費內容..." />
-                            <button type="button" onClick={handleAutoCategorize} className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors flex items-center justify-center gap-2 font-bold border border-slate-200">
-                                <Wand2 size={18} className={isAutoCategorizing ? 'animate-spin' : ''} /> AI
-                            </button>
-                        </div>
+                        <input required type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="輸入消費內容..." />
                     </div>
                     <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                         <button type="button" onClick={() => setIsAdding(false)} className="px-6 py-2.5 text-slate-500 hover:text-slate-800 font-bold">取消</button>

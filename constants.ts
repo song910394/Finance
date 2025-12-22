@@ -1,9 +1,10 @@
+
 import { Transaction, PaymentMethod, CardBank } from './types';
 
 // Hardcoded Google Apps Script URL for Cloud Sync
 export const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz6-pTM4Msr32C2sK0q5xCgXgu0x571HudIwFui_HpvKZB2MrwtkTm1dfZVpZtKpBOe3w/exec';
 
-// Helper to generate consistent colors for categories
+// Helper to generate consistent colors for categories using standard vibrant palette
 export const getCategoryColor = (category: string): string => {
   const colors: Record<string, string> = {
     '食': '#ef4444', // Red
@@ -13,18 +14,19 @@ export const getCategoryColor = (category: string): string => {
     '育': '#8b5cf6', // Violet
     '樂': '#ec4899', // Pink
     '其他': '#6b7280', // Gray
-    '信用卡出帳': '#1f2937', // Dark
+    '信用卡出帳': '#374151', // Dark Gray
   };
 
   if (colors[category]) return colors[category];
   
-  // Generate a consistent pastel color for custom categories based on string hash
+  // Generate a consistent vibrant color for custom categories
   let hash = 0;
   for (let i = 0; i < category.length; i++) {
     hash = category.charCodeAt(i) + ((hash << 5) - hash);
   }
   const hue = Math.abs(hash % 360);
-  return `hsl(${hue}, 70%, 50%)`;
+  // Standard saturation and lightness for visibility
+  return `hsl(${hue}, 70%, 60%)`;
 };
 
 export const INITIAL_TRANSACTIONS: Transaction[] = [
