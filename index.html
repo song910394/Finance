@@ -30,23 +30,24 @@
       .pt-safe { padding-top: env(safe-area-inset-top); }
     </style>
     <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@19.0.0",
-    "react-dom": "https://esm.sh/react-dom@19.0.0",
-    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
-    "react/": "https://esm.sh/react@19.0.0/",
-    "react-dom/": "https://esm.sh/react-dom@19.0.0/",
-    "@google/genai": "https://esm.sh/@google/genai@1.30.0",
-    "lucide-react": "https://esm.sh/lucide-react@0.454.0?external=react",
-    "recharts": "https://esm.sh/recharts@2.13.0?external=react,react-dom",
-    "xlsx": "https://esm.sh/xlsx@0.18.5"
-  }
-}
-</script>
+    {
+      "imports": {
+        "react": "https://esm.sh/react@19.0.0",
+        "react/": "https://esm.sh/react@19.0.0/",
+        "react-dom": "https://esm.sh/react-dom@19.0.0",
+        "react-dom/": "https://esm.sh/react-dom@19.0.0/",
+        "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+        "@google/genai": "https://esm.sh/@google/genai@1.30.0",
+        "lucide-react": "https://esm.sh/lucide-react@0.454.0?deps=react@19.0.0",
+        "recharts": "https://esm.sh/recharts@2.13.0?deps=react@19.0.0,react-dom@19.0.0",
+        "xlsx": "https://esm.sh/xlsx@0.18.5"
+      }
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <!-- 關鍵修正：確保這裡使用 ./ 代表相對路徑，避免 GitHub Pages 子目錄路徑錯誤 -->
     <script type="module" src="./index.tsx"></script>
   </body>
 </html>
