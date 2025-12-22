@@ -7,14 +7,14 @@
     <title>H&S記帳</title>
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="manifest.json" />
+    <link rel="manifest" href="./manifest.json" />
     
     <!-- iOS Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="H&S記帳">
     
-    <!-- App Icons (Using a generic accounting icon) -->
+    <!-- App Icons -->
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2654/2654524.png">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2654/2654524.png">
 
@@ -24,32 +24,29 @@
       body { 
         font-family: 'Inter', sans-serif; 
         background-color: #f3f4f6; 
-        /* 防止 iOS 橡皮筋回彈效果干擾 UI */
         overscroll-behavior-y: none;
       }
-      /* 優化 iOS 安全區域 (Notch) */
-      .pb-safe {
-        padding-bottom: env(safe-area-inset-bottom);
-      }
-      .pt-safe {
-        padding-top: env(safe-area-inset-top);
-      }
+      .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+      .pt-safe { padding-top: env(safe-area-inset-top); }
     </style>
-  <script type="importmap">
+    <script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.0",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs"
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "react/": "https://esm.sh/react@19.0.0/",
+    "react-dom/": "https://esm.sh/react-dom@19.0.0/",
+    "@google/genai": "https://esm.sh/@google/genai@1.30.0",
+    "lucide-react": "https://esm.sh/lucide-react@0.454.0?external=react",
+    "recharts": "https://esm.sh/recharts@2.13.0?external=react,react-dom",
+    "xlsx": "https://esm.sh/xlsx@0.18.5"
   }
 }
 </script>
-</head>
+  </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>
