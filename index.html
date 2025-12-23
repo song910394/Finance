@@ -1,10 +1,10 @@
-
 <!DOCTYPE html>
 <html lang="zh-TW">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>H&S記帳</title>
+    <meta name="description" content="一個簡單易用的個人財務記帳應用程式" />
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="./manifest.json" />
@@ -13,14 +13,34 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="H&S記帳">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#2563eb">
     
     <!-- App Icons -->
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2654/2654524.png">
-    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2654/2654524.png">
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512x512.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192x192.png">
 
-    <!-- Polyfill for process.env (Required for browser environments without build tools) -->
+    <!-- Polyfill for process.env -->
     <script>
       window.process = { env: { API_KEY: "" } };
+    </script>
+
+    <!-- Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then((registration) => {
+              console.log('SW registered: ', registration);
+            })
+            .catch((error) => {
+              console.log('SW registration failed: ', error);
+            });
+        });
+      }
     </script>
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -52,7 +72,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <!-- 使用相對路徑引進 index.tsx -->
     <script type="module" src="./index.tsx"></script>
   </body>
 </html>
