@@ -270,67 +270,67 @@ const TransactionList: React.FC<TransactionListProps> = ({
             </div>
 
             {isAdding && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-fade-in">
-                    <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl relative my-auto">
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-3xl">
-                            <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><LayoutList className="text-indigo-500" /> {editingId ? '修改支出' : '新增支出'}</h3>
-                            <button type="button" onClick={() => setIsAdding(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400 hover:text-slate-600">
-                                <X size={20} />
+                <div className="fixed inset-0 z-50 flex items-start justify-center p-2 md:p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-fade-in">
+                    <div className="bg-white w-full max-w-2xl rounded-2xl md:rounded-3xl shadow-2xl relative my-4 md:my-auto">
+                        <div className="p-4 md:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-2xl md:rounded-t-3xl sticky top-0 z-10">
+                            <h3 className="text-base md:text-lg font-black text-slate-800 flex items-center gap-2"><LayoutList className="text-indigo-500" size={18} /> {editingId ? '修改支出' : '新增支出'}</h3>
+                            <button type="button" onClick={() => setIsAdding(false)} className="p-1.5 md:p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400 hover:text-slate-600">
+                                <X size={18} />
                             </button>
                         </div>
 
-                        <div className="p-6 max-h-[80vh] overflow-y-auto">
-                            <div className="flex flex-wrap justify-end gap-2 mb-4">
-                                <button type="button" onClick={() => { setIsRecurring(!isRecurring); setIsInstallment(false); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isRecurring ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                                    <RefreshCcw size={14} className={isRecurring ? 'animate-spin' : ''} /> 每月固定
+                        <div className="p-4 md:p-6">
+                            <div className="flex flex-wrap justify-end gap-2 mb-3">
+                                <button type="button" onClick={() => { setIsRecurring(!isRecurring); setIsInstallment(false); }} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${isRecurring ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                                    <RefreshCcw size={12} className={isRecurring ? 'animate-spin' : ''} /> 每月固定
                                 </button>
                                 {paymentMethod === PaymentMethod.CREDIT_CARD && (
-                                    <button type="button" onClick={() => { setIsInstallment(!isInstallment); setIsRecurring(false); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isInstallment ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                                        <SplitSquareVertical size={14} /> 分期
+                                    <button type="button" onClick={() => { setIsInstallment(!isInstallment); setIsRecurring(false); }} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${isInstallment ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                                        <SplitSquareVertical size={12} /> 分期
                                     </button>
                                 )}
                             </div>
 
-                            <form onSubmit={handleSubmit} className="space-y-5">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest">交易日期</label>
-                                        <input required type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" />
+                            <form onSubmit={handleSubmit} className="space-y-3 md:space-y-5">
+                                <div className="grid grid-cols-2 gap-3 md:gap-5">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest">交易日期</label>
+                                        <input required type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-2.5 md:p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none" />
                                     </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest">金額 (TWD)</label>
-                                        <input required type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-xl font-black focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="0" />
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest">金額 (TWD)</label>
+                                        <input required type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2.5 md:p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-lg md:text-xl font-black focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="0" />
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest">支付方式</label>
-                                        <select value={paymentMethod} onChange={e => { setPaymentMethod(e.target.value as PaymentMethod); if (e.target.value !== PaymentMethod.CREDIT_CARD) setIsInstallment(false); }} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest">支付方式</label>
+                                        <select value={paymentMethod} onChange={e => { setPaymentMethod(e.target.value as PaymentMethod); if (e.target.value !== PaymentMethod.CREDIT_CARD) setIsInstallment(false); }} className="w-full p-2.5 md:p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
                                             {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
                                         </select>
                                     </div>
                                     {paymentMethod === PaymentMethod.CREDIT_CARD && (
-                                        <div className="space-y-2 animate-in slide-in-from-left-2">
-                                            <label className="text-xs font-black text-indigo-400 uppercase tracking-widest">刷卡銀行</label>
-                                            <select value={cardBank} onChange={e => setCardBank(e.target.value)} className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-700 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
+                                        <div className="space-y-1 animate-in slide-in-from-left-2">
+                                            <label className="text-[10px] md:text-xs font-black text-indigo-400 uppercase tracking-widest">刷卡銀行</label>
+                                            <select value={cardBank} onChange={e => setCardBank(e.target.value)} className="w-full p-2.5 md:p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-700 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
                                                 {cardBanks.map(m => <option key={m} value={m}>{m}</option>)}
                                             </select>
                                         </div>
                                     )}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest">分類</label>
-                                        <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
+                                    <div className={`space-y-1 ${paymentMethod !== PaymentMethod.CREDIT_CARD ? 'col-span-1' : ''}`}>
+                                        <label className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest">分類</label>
+                                        <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-2.5 md:p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none appearance-none">
                                             {categories.map(c => <option key={c} value={c}>{c}</option>)}
                                         </select>
                                     </div>
                                 </div>
 
                                 {isInstallment && (
-                                    <div className="space-y-2 animate-in slide-in-from-right-2 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
-                                        <label className="text-xs font-black text-indigo-500 uppercase tracking-widest">分期設定 (自動拆分金額)</label>
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-sm font-bold text-slate-600">總期數:</span>
-                                            <input type="number" min="2" max="60" value={installments} onChange={e => setInstallments(e.target.value)} className="w-24 p-2 bg-white border border-indigo-200 rounded-lg text-center font-black text-indigo-600" />
+                                    <div className="space-y-1.5 animate-in slide-in-from-right-2 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
+                                        <label className="text-[10px] md:text-xs font-black text-indigo-500 uppercase tracking-widest">分期設定</label>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold text-slate-600">總期數:</span>
+                                            <input type="number" min="2" max="60" value={installments} onChange={e => setInstallments(e.target.value)} className="w-16 p-1.5 bg-white border border-indigo-200 rounded-lg text-center text-sm font-black text-indigo-600" />
                                             <span className="text-xs text-slate-400">期</span>
                                             <div className="flex-1 text-right text-xs text-slate-500">
                                                 每期約 <span className="font-bold text-slate-800">${(parseFloat(amount) / parseInt(installments) || 0).toFixed(0)}</span>
@@ -339,13 +339,13 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                     </div>
                                 )}
 
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">用途說明</label>
-                                    <input required type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="輸入消費內容..." />
+                                <div className="space-y-1">
+                                    <label className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest">用途說明</label>
+                                    <input required type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 md:p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="輸入消費內容..." />
                                 </div>
-                                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                                    <button type="button" onClick={() => setIsAdding(false)} className="px-6 py-2.5 text-slate-500 hover:text-slate-800 font-bold">取消</button>
-                                    <button type="submit" className="px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all">確認儲存</button>
+                                <div className="flex justify-end gap-2 pt-3 md:pt-4 border-t border-slate-100 pb-safe">
+                                    <button type="button" onClick={() => setIsAdding(false)} className="px-4 md:px-6 py-2 md:py-2.5 text-slate-500 hover:text-slate-800 font-bold text-sm">取消</button>
+                                    <button type="submit" className="px-6 md:px-8 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all text-sm">確認儲存</button>
                                 </div>
                             </form>
                         </div>
