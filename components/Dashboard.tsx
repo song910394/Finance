@@ -15,7 +15,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks }
     const [filterType, setFilterType] = useState<'month' | 'year' | 'all'>('month');
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
-    const [excludeAgency, setExcludeAgency] = useState(false);
+    const [excludeAgency, setExcludeAgency] = useState(true);
 
     // State for the detail popup
     const [detailView, setDetailView] = useState<{ type: 'card' | 'category', title: string } | null>(null);
