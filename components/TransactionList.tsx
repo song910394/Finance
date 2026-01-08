@@ -222,8 +222,29 @@ const TransactionList: React.FC<TransactionListProps> = ({
                     </select>
                     {filterType === 'month' && (
                         <div className="relative flex items-center">
-                            <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-white pl-2 pr-7 py-0.5 rounded-lg text-xs font-black text-indigo-600 outline-none border border-slate-200 appearance-none cursor-pointer z-10 bg-transparent" />
-                            <Calendar size={12} className="absolute right-2 text-indigo-500 pointer-events-none z-0" />
+                            <button
+                                onClick={() => {
+                                    const d = new Date(selectedMonth + '-01');
+                                    d.setMonth(d.getMonth() - 1);
+                                    setSelectedMonth(d.toISOString().slice(0, 7));
+                                }}
+                                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+                                title="上個月"
+                            >
+                                <ChevronLeft size={14} className="text-slate-500" />
+                            </button>
+                            <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-white px-1 py-0.5 rounded-lg text-xs font-black text-indigo-600 outline-none border border-slate-200 appearance-none cursor-pointer w-[90px] text-center" />
+                            <button
+                                onClick={() => {
+                                    const d = new Date(selectedMonth + '-01');
+                                    d.setMonth(d.getMonth() + 1);
+                                    setSelectedMonth(d.toISOString().slice(0, 7));
+                                }}
+                                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+                                title="下個月"
+                            >
+                                <ChevronRight size={14} className="text-slate-500" />
+                            </button>
                         </div>
                     )}
                     {filterType === 'year' && (

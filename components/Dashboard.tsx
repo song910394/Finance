@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Transaction, Category, CategorySummary, CardBank, PaymentMethod } from '../types';
 import { getCategoryColor } from '../constants';
-import { Wallet, DollarSign, CreditCard, TrendingUp, Calendar, ChevronDown, Banknote, X, ArrowRight, Filter } from 'lucide-react';
+import { Wallet, DollarSign, CreditCard, TrendingUp, Calendar, ChevronDown, ChevronLeft, ChevronRight, Banknote, X, ArrowRight, Filter } from 'lucide-react';
 
 interface DashboardProps {
     transactions: Transaction[];
@@ -126,14 +126,35 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks }
                         </div>
 
                         {filterType === 'month' && (
-                            <div className="relative flex items-center bg-white min-w-[110px] md:min-w-[140px]">
+                            <div className="relative flex items-center bg-white">
+                                <button
+                                    onClick={() => {
+                                        const d = new Date(selectedMonth + '-01');
+                                        d.setMonth(d.getMonth() - 1);
+                                        setSelectedMonth(d.toISOString().slice(0, 7));
+                                    }}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                    title="上個月"
+                                >
+                                    <ChevronLeft size={16} className="text-slate-500" />
+                                </button>
                                 <input
                                     type="month"
                                     value={selectedMonth}
                                     onChange={e => setSelectedMonth(e.target.value)}
-                                    className="w-full pl-3 pr-9 py-2 text-[10px] md:text-xs text-slate-700 font-black focus:outline-none bg-transparent relative z-10 cursor-pointer"
+                                    className="w-[100px] md:w-[130px] px-1 py-2 text-[10px] md:text-xs text-slate-700 font-black focus:outline-none bg-transparent cursor-pointer text-center"
                                 />
-                                <Calendar size={14} className="absolute right-3 text-indigo-500 pointer-events-none z-0" />
+                                <button
+                                    onClick={() => {
+                                        const d = new Date(selectedMonth + '-01');
+                                        d.setMonth(d.getMonth() + 1);
+                                        setSelectedMonth(d.toISOString().slice(0, 7));
+                                    }}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                    title="下個月"
+                                >
+                                    <ChevronRight size={16} className="text-slate-500" />
+                                </button>
                             </div>
                         )}
                         {filterType === 'year' && (

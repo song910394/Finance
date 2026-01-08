@@ -1,17 +1,19 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, List, CreditCard, PieChart, Settings as SettingsIcon, Cloud, CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
+import { LayoutDashboard, List, CreditCard, PieChart, Settings as SettingsIcon, Cloud, CheckCircle2, RefreshCw, AlertCircle, Wallet } from 'lucide-react';
 import TransactionList from './components/TransactionList';
 import Dashboard from './components/Dashboard';
 import Reconciliation from './components/Reconciliation';
 import Settings from './components/Settings';
-import { Transaction, DEFAULT_CATEGORIES, CardBank, CardSetting } from './types';
+import BudgetManager from './components/BudgetManager';
+import { Transaction, DEFAULT_CATEGORIES, CardBank, CardSetting, IncomeSource, MonthlyBudget } from './types';
 import { INITIAL_TRANSACTIONS, GOOGLE_SCRIPT_URL } from './constants';
 import { saveToGoogleSheet, loadFromGoogleSheet } from './services/googleSheetService';
 
 enum Tab {
   DASHBOARD = '概覽',
   TRANSACTIONS = '記帳',
+  BUDGET = '帳務',
   RECONCILIATION = '對帳',
   SETTINGS = '設定'
 }
@@ -20,17 +22,24 @@ type SyncStatus = 'idle' | 'syncing' | 'saved' | 'error';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DASHBOARD);
-  
+
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [cardBanks, setCardBanks] = useState<string[]>(Object.values(CardBank));
   const [budget, setBudget] = useState<number>(50000);
   const [cardSettings, setCardSettings] = useState<Record<string, CardSetting>>({});
+  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([
+    { id: '1', name: '姑姑給' },
+    { id: '2', name: '媽媽給' },
+    { id: '3', name: '薪水入帳', defaultDay: 6 },
+    { id: '4', name: '哩婆給' },
+  ]);
+  const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
 
   const [googleScriptUrl, setGoogleScriptUrl] = useState(GOOGLE_SCRIPT_URL);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [lastSyncedTime, setLastSyncedTime] = useState<string>('');
-  
+
   const isRemoteUpdate = useRef(false);
   const isFirstMount = useRef(true);
 
@@ -58,15 +67,17 @@ function App() {
     }
 
     setSyncStatus('syncing');
-    
+
     const timer = setTimeout(async () => {
       try {
-        await saveToGoogleSheet(googleScriptUrl, { 
-            transactions, 
-            categories, 
-            budget, 
-            cardBanks, 
-            cardSettings 
+        await saveToGoogleSheet(googleScriptUrl, {
+          transactions,
+          categories,
+          budget,
+          cardBanks,
+          cardSettings,
+          incomeSources,
+          budgets
         });
         setSyncStatus('saved');
         setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -77,20 +88,22 @@ function App() {
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [transactions, categories, budget, cardBanks, cardSettings, googleScriptUrl]);
+  }, [transactions, categories, budget, cardBanks, cardSettings, incomeSources, budgets, googleScriptUrl]);
 
   const handleAutoLoad = async (url: string) => {
     setSyncStatus('syncing');
     try {
       const data = await loadFromGoogleSheet(url);
       if (data) {
-        isRemoteUpdate.current = true; 
+        isRemoteUpdate.current = true;
         if (data.transactions) setTransactions(data.transactions);
         if (data.categories) setCategories(data.categories);
         if (data.budget) setBudget(data.budget);
         if (data.cardBanks) setCardBanks(data.cardBanks);
         if (data.cardSettings) setCardSettings(data.cardSettings);
-        
+        if (data.incomeSources) setIncomeSources(data.incomeSources);
+        if (data.budgets) setBudgets(data.budgets);
+
         setSyncStatus('saved');
         setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       } else {
@@ -147,7 +160,7 @@ function App() {
   const handleSettingsSync = async (url: string, isUpload: boolean) => {
     setGoogleScriptUrl(url);
     if (isUpload) {
-      await saveToGoogleSheet(url, { transactions, categories, budget, cardBanks, cardSettings });
+      await saveToGoogleSheet(url, { transactions, categories, budget, cardBanks, cardSettings, incomeSources, budgets });
       setSyncStatus('saved');
       setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
     } else {
@@ -156,64 +169,65 @@ function App() {
   };
 
   const renderSyncIcon = () => {
-    if (!googleScriptUrl) return <span className="text-gray-300"><Cloud size={16}/></span>;
-    if (syncStatus === 'syncing') return <RefreshCw size={16} className="animate-spin text-blue-500"/>;
-    if (syncStatus === 'saved') return <CheckCircle2 size={16} className="text-green-500"/>;
-    if (syncStatus === 'error') return <AlertCircle size={16} className="text-red-500"/>;
-    return <Cloud size={16} className="text-gray-400"/>;
+    if (!googleScriptUrl) return <span className="text-gray-300"><Cloud size={16} /></span>;
+    if (syncStatus === 'syncing') return <RefreshCw size={16} className="animate-spin text-blue-500" />;
+    if (syncStatus === 'saved') return <CheckCircle2 size={16} className="text-green-500" />;
+    if (syncStatus === 'error') return <AlertCircle size={16} className="text-red-500" />;
+    return <Cloud size={16} className="text-gray-400" />;
   };
 
   return (
     <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-[#f8fafc] font-sans">
       <aside className="hidden lg:flex w-64 bg-white border-r border-gray-100 flex-col h-full shrink-0 z-20">
         <div className="p-6 border-b border-gray-50 flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-blue-200 shadow-lg">
-                <PieChart size={20} />
-            </div>
-            <h1 className="text-xl font-extrabold text-gray-800 tracking-tight">H&S記帳</h1>
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-blue-200 shadow-lg">
+            <PieChart size={20} />
+          </div>
+          <h1 className="text-xl font-extrabold text-gray-800 tracking-tight">H&S記帳</h1>
         </div>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <NavItem icon={<LayoutDashboard size={20} />} label={Tab.DASHBOARD} isActive={activeTab === Tab.DASHBOARD} onClick={() => setActiveTab(Tab.DASHBOARD)} />
           <NavItem icon={<List size={20} />} label={Tab.TRANSACTIONS} isActive={activeTab === Tab.TRANSACTIONS} onClick={() => setActiveTab(Tab.TRANSACTIONS)} />
           <NavItem icon={<CreditCard size={20} />} label={Tab.RECONCILIATION} isActive={activeTab === Tab.RECONCILIATION} onClick={() => setActiveTab(Tab.RECONCILIATION)} />
+          <NavItem icon={<Wallet size={20} />} label={Tab.BUDGET} isActive={activeTab === Tab.BUDGET} onClick={() => setActiveTab(Tab.BUDGET)} />
           <div className="pt-4 mt-4 border-t border-gray-50">
             <NavItem icon={<SettingsIcon size={20} />} label={Tab.SETTINGS} isActive={activeTab === Tab.SETTINGS} onClick={() => setActiveTab(Tab.SETTINGS)} />
           </div>
         </nav>
         <div className="p-4 bg-gray-50 border-t border-gray-100">
-           <div className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-1">
-              {renderSyncIcon()}
-              <span>
-                {syncStatus === 'saved' ? `已同步 ${lastSyncedTime}` : 
-                 syncStatus === 'syncing' ? '同步中...' : 
-                 syncStatus === 'error' ? '同步失敗' : '未連線'}
-              </span>
-           </div>
-           <p className="text-[10px] text-gray-400 mt-2">© 2024 H&S記帳</p>
+          <div className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-1">
+            {renderSyncIcon()}
+            <span>
+              {syncStatus === 'saved' ? `已同步 ${lastSyncedTime}` :
+                syncStatus === 'syncing' ? '同步中...' :
+                  syncStatus === 'error' ? '同步失敗' : '未連線'}
+            </span>
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">© 2024 H&S記帳</p>
         </div>
       </aside>
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         <header className="lg:hidden bg-white border-b border-gray-100 px-4 py-3 flex justify-between items-center z-10 shrink-0">
-            <div className="flex items-center gap-2">
-                <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white">
-                    <PieChart size={16} />
-                </div>
-                <h1 className="text-lg font-bold text-gray-800">H&S記帳</h1>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white">
+              <PieChart size={16} />
             </div>
-            <div className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded-full border border-gray-100">
-                {renderSyncIcon()}
-                {syncStatus === 'saved' && <span className="text-[10px] text-gray-500 font-mono">{lastSyncedTime}</span>}
-            </div>
+            <h1 className="text-lg font-bold text-gray-800">H&S記帳</h1>
+          </div>
+          <div className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded-full border border-gray-100">
+            {renderSyncIcon()}
+            {syncStatus === 'saved' && <span className="text-[10px] text-gray-500 font-mono">{lastSyncedTime}</span>}
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto scrollbar-hide bg-[#f8fafc]">
           <div className="p-4 pb-28 md:p-8 md:pb-8 max-w-7xl mx-auto">
             {activeTab === Tab.DASHBOARD && <Dashboard transactions={transactions} budget={budget} cardBanks={cardBanks} />}
             {activeTab === Tab.TRANSACTIONS && (
-              <TransactionList 
-                transactions={transactions} 
+              <TransactionList
+                transactions={transactions}
                 categories={categories}
                 cardBanks={cardBanks}
-                onAddTransaction={addTransaction} 
+                onAddTransaction={addTransaction}
                 onAddTransactions={addTransactions}
                 onEditTransaction={editTransaction}
                 onDeleteTransaction={deleteTransaction}
@@ -221,38 +235,50 @@ function App() {
               />
             )}
             {activeTab === Tab.RECONCILIATION && (
-                <Reconciliation 
-                    transactions={transactions} 
-                    cardBanks={cardBanks} 
-                    cardSettings={cardSettings}
-                    onToggleReconcile={toggleReconcile} 
-                    onAddTransaction={addTransaction} 
-                    onUpdateCardSettings={setCardSettings}
-                />
+              <Reconciliation
+                transactions={transactions}
+                cardBanks={cardBanks}
+                cardSettings={cardSettings}
+                onToggleReconcile={toggleReconcile}
+                onAddTransaction={addTransaction}
+                onUpdateCardSettings={setCardSettings}
+              />
+            )}
+            {activeTab === Tab.BUDGET && (
+              <BudgetManager
+                transactions={transactions}
+                cardBanks={cardBanks}
+                cardSettings={cardSettings}
+                incomeSources={incomeSources}
+                budgets={budgets}
+                onUpdateIncomeSources={setIncomeSources}
+                onUpdateBudgets={setBudgets}
+              />
             )}
             {activeTab === Tab.SETTINGS && (
-                <Settings 
-                    categories={categories} 
-                    budget={budget} 
-                    cardBanks={cardBanks} 
-                    cardSettings={cardSettings}
-                    onUpdateCategories={setCategories} 
-                    onUpdateBudget={setBudget} 
-                    onUpdateCardBanks={setCardBanks} 
-                    onUpdateCardSettings={setCardSettings}
-                    onCloudSync={handleSettingsSync} 
-                    onResetData={resetData} 
-                />
+              <Settings
+                categories={categories}
+                budget={budget}
+                cardBanks={cardBanks}
+                cardSettings={cardSettings}
+                onUpdateCategories={setCategories}
+                onUpdateBudget={setBudget}
+                onUpdateCardBanks={setCardBanks}
+                onUpdateCardSettings={setCardSettings}
+                onCloudSync={handleSettingsSync}
+                onResetData={resetData}
+              />
             )}
           </div>
         </main>
         <nav className="lg:hidden bg-white/90 backdrop-blur-md border-t border-gray-200 fixed bottom-0 w-full z-50 pb-safe">
-            <div className="grid grid-cols-4 h-16">
-                <MobileNavItem icon={<LayoutDashboard size={20} />} label={Tab.DASHBOARD} isActive={activeTab === Tab.DASHBOARD} onClick={() => setActiveTab(Tab.DASHBOARD)} />
-                <MobileNavItem icon={<List size={20} />} label={Tab.TRANSACTIONS} isActive={activeTab === Tab.TRANSACTIONS} onClick={() => setActiveTab(Tab.TRANSACTIONS)} />
-                <MobileNavItem icon={<CreditCard size={20} />} label="對帳" isActive={activeTab === Tab.RECONCILIATION} onClick={() => setActiveTab(Tab.RECONCILIATION)} />
-                <MobileNavItem icon={<SettingsIcon size={20} />} label={Tab.SETTINGS} isActive={activeTab === Tab.SETTINGS} onClick={() => setActiveTab(Tab.SETTINGS)} />
-            </div>
+          <div className="grid grid-cols-5 h-16">
+            <MobileNavItem icon={<LayoutDashboard size={20} />} label={Tab.DASHBOARD} isActive={activeTab === Tab.DASHBOARD} onClick={() => setActiveTab(Tab.DASHBOARD)} />
+            <MobileNavItem icon={<List size={20} />} label={Tab.TRANSACTIONS} isActive={activeTab === Tab.TRANSACTIONS} onClick={() => setActiveTab(Tab.TRANSACTIONS)} />
+            <MobileNavItem icon={<CreditCard size={20} />} label="對帳" isActive={activeTab === Tab.RECONCILIATION} onClick={() => setActiveTab(Tab.RECONCILIATION)} />
+            <MobileNavItem icon={<Wallet size={20} />} label="帳務" isActive={activeTab === Tab.BUDGET} onClick={() => setActiveTab(Tab.BUDGET)} />
+            <MobileNavItem icon={<SettingsIcon size={20} />} label={Tab.SETTINGS} isActive={activeTab === Tab.SETTINGS} onClick={() => setActiveTab(Tab.SETTINGS)} />
+          </div>
         </nav>
       </div>
     </div>
@@ -267,10 +293,10 @@ const NavItem = ({ icon, label, isActive, onClick }: { icon: React.ReactNode, la
 );
 
 const MobileNavItem = ({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) => (
-    <button onClick={onClick} className="flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
-      <div className={`p-1.5 rounded-full transition-colors ${isActive ? 'text-blue-600 bg-blue-50' : 'text-gray-400'}`}>{icon}</div>
-      <span className={`text-[10px] font-medium ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>{label}</span>
-    </button>
-  );
+  <button onClick={onClick} className="flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+    <div className={`p-1.5 rounded-full transition-colors ${isActive ? 'text-blue-600 bg-blue-50' : 'text-gray-400'}`}>{icon}</div>
+    <span className={`text-[10px] font-medium ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>{label}</span>
+  </button>
+);
 
 export default App;

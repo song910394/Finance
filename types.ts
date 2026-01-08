@@ -58,4 +58,22 @@ export interface BackupData {
   budget: number;
   cardBanks: string[];
   cardSettings: Record<string, CardSetting>;
+  incomeSources?: IncomeSource[];
+  budgets?: MonthlyBudget[];
 }
+
+// 入帳來源設定
+export interface IncomeSource {
+  id: string;
+  name: string; // 姑姑給、媽媽給、薪水入帳...
+  defaultDay?: number; // 預設入帳日
+}
+
+// 月度預算資料
+export interface MonthlyBudget {
+  month: string; // YYYY-MM
+  openingBalance: number; // 期初餘額
+  incomes: { sourceId: string; amount: number }[]; // 各入帳來源金額
+  loan: number; // 貸款金額
+}
+
