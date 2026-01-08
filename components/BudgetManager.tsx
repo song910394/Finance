@@ -41,44 +41,57 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
     }, [budgets, selectedMonth, incomeSources]);
 
     // 計算各信用卡在週期內的已核銷金額
-    // 週期定義：以選擇的月份為基準，從上月 16 日到本月 15 日（含跨月出帳日）
+    // 邏輯：帳務月份 YYYY-MM，需要根據每張卡的結帳日決定應抓取哪個月份的對帳資料
+    // - 結帳日 >= 16（當月結帳）：抓取 selectedMonth 的對帳資料
+    // - 結帳日 <= 15（次月結帳）：抓取 selectedMonth + 1 月的對帳資料
     const cardTotals = useMemo(() => {
         const result: Record<string, number> = {};
         const banks = cardBanks.filter(b => b !== '-');
 
-        // 取得月份資訊
-        const [year, month] = selectedMonth.split('-').map(Number);
+        // 取得選擇的月份資訊
+        const [baseYear, baseMonth] = selectedMonth.split('-').map(Number);
 
         banks.forEach(bank => {
             const statementDay = cardSettings[bank]?.statementDay || 0;
 
-            // 根據結帳日判斷週期
-            // 如果結帳日 <= 15（跨月：次月結帳），則該筆歸屬於上個月的週期
-            // 如果結帳日 > 15（當月結帳），則該筆歸屬於當月週期
+            // 決定應該抓取哪個月份的對帳資料
+            let targetYear = baseYear;
+            let targetMonth = baseMonth;
 
-            const periodStart = new Date(year, month - 2, 16); // 上月 16 日
-            const periodEnd = new Date(year, month - 1, 15, 23, 59, 59); // 本月 15 日
-
-            // 對於次月出帳的卡（如國泰 3日、富邦 3日）
-            // 週期延伸到次月中旬
-            let effectiveEnd = periodEnd;
             if (statementDay > 0 && statementDay <= 15) {
-                // 結帳日在次月 1-15 日，週期結束日設為次月該日
-                effectiveEnd = new Date(year, month - 1, statementDay, 23, 59, 59);
+                // 次月結帳的卡（如國泰3日、富邦2日），需要抓取 selectedMonth + 1 月的對帳資料
+                targetMonth = baseMonth + 1;
+                if (targetMonth > 12) {
+                    targetMonth = 1;
+                    targetYear = baseYear + 1;
+                }
             }
 
-            const total = transactions
-                .filter(t => {
-                    if (t.paymentMethod !== PaymentMethod.CREDIT_CARD) return false;
-                    if (t.cardBank !== bank) return false;
-                    if (!t.isReconciled) return false;
+            // 使用與對帳頁面相同的週期計算邏輯
+            // 週期範圍：上月 statementDay+1 日 到 本月 statementDay 日
+            if (statementDay > 0) {
+                const endDate = new Date(targetYear, targetMonth - 1, statementDay);
+                const startDate = new Date(targetYear, targetMonth - 2, statementDay + 1);
 
-                    const txDate = new Date(t.date);
-                    return txDate >= periodStart && txDate <= effectiveEnd;
-                })
-                .reduce((sum, t) => sum + t.amount, 0);
+                const start = startDate.toISOString().split('T')[0];
+                const end = endDate.toISOString().split('T')[0];
 
-            result[bank] = total;
+                const total = transactions
+                    .filter(t => {
+                        if (t.paymentMethod !== PaymentMethod.CREDIT_CARD) return false;
+                        if (t.cardBank !== bank) return false;
+                        if (!t.isReconciled) return false;
+
+                        // 只計算在週期內的已核銷交易
+                        return t.date >= start && t.date <= end;
+                    })
+                    .reduce((sum, t) => sum + t.amount, 0);
+
+                result[bank] = total;
+            } else {
+                // 如果沒有設定結帳日，預設為 0
+                result[bank] = 0;
+            }
         });
 
         return result;
