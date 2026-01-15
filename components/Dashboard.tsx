@@ -70,15 +70,36 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks }
 
     // Installment progress tracking - aggregate all installment transactions
     const installmentProgress = useMemo(() => {
-        // Get all installment transactions (not filtered by time)
-        const installmentTxs = transactions.filter(t => t.isInstallment);
+        // Helper to check if description looks like an installment (contains N/M pattern)
+        const looksLikeInstallment = (desc: string) => {
+            return /\d+\/\d+/.test(desc);
+        };
+
+        // Get all installment transactions - check BOTH flag AND description pattern
+        // This catches transactions that weren't flagged but have installment-like descriptions
+        const installmentTxs = transactions.filter(t =>
+            t.isInstallment || looksLikeInstallment(t.description)
+        );
         if (installmentTxs.length === 0) return { items: [], monthlyTotal: 0 };
 
         // Parse description to extract base name and period info
-        // Format: "項目名稱 (N/M)" or just "項目名稱"
+        // Supports multiple formats:
+        // - "項目名稱 (N/M)" or "項目名稱(N/M)"
+        // - "項目名稱 (分期N/M)" or "項目名稱(分期N/M)"
+        // - "項目名稱分期N/M"
         const parseInstallment = (desc: string) => {
-            const match = desc.match(/^(.+?)\s*\((\d+)\/(\d+)\)$/);
+            // Try format: "name (N/M)" or "name(N/M)" or "name (分期N/M)"
+            let match = desc.match(/^(.+?)\s*\(分?期?(\d+)\/(\d+)\)$/);
             if (match) return { baseName: match[1].trim(), current: +match[2], total: +match[3] };
+
+            // Try format: "name分期N/M" (no parentheses)
+            match = desc.match(/^(.+?)分期(\d+)\/(\d+)$/);
+            if (match) return { baseName: match[1].trim(), current: +match[2], total: +match[3] };
+
+            // Try format: "nameN/M" (just numbers at end)
+            match = desc.match(/^(.+?)(\d+)\/(\d+)$/);
+            if (match) return { baseName: match[1].trim(), current: +match[2], total: +match[3] };
+
             return { baseName: desc, current: 1, total: 1 };
         };
 
