@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Transaction, Category, CategorySummary, CardBank, PaymentMethod } from '../types';
 import { getCategoryColor } from '../constants';
-import { Wallet, DollarSign, CreditCard, TrendingUp, Calendar, ChevronDown, ChevronLeft, ChevronRight, Banknote, X, ArrowRight, Filter } from 'lucide-react';
+import { Wallet, DollarSign, CreditCard, TrendingUp, Calendar, ChevronDown, ChevronLeft, ChevronRight, Banknote, X, ArrowRight, Filter, CalendarClock } from 'lucide-react';
 
 interface DashboardProps {
     transactions: Transaction[];
@@ -67,6 +67,82 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks }
             return { bank, unbilled, billedRecent };
         }).filter(c => c.unbilled > 0 || c.billedRecent > 0);
     }, [statsTransactions, cardBanks]);
+
+    // Installment progress tracking - aggregate all installment transactions
+    const installmentProgress = useMemo(() => {
+        // Get all installment transactions (not filtered by time)
+        const installmentTxs = transactions.filter(t => t.isInstallment);
+        if (installmentTxs.length === 0) return { items: [], monthlyTotal: 0 };
+
+        // Parse description to extract base name and period info
+        // Format: "項目名稱 (N/M)" or just "項目名稱"
+        const parseInstallment = (desc: string) => {
+            const match = desc.match(/^(.+?)\s*\((\d+)\/(\d+)\)$/);
+            if (match) return { baseName: match[1].trim(), current: +match[2], total: +match[3] };
+            return { baseName: desc, current: 1, total: 1 };
+        };
+
+        // Group by base name
+        const grouped = new Map<string, {
+            transactions: typeof installmentTxs;
+            cardBank: string;
+            totalPeriods: number;
+        }>();
+
+        installmentTxs.forEach(t => {
+            const { baseName, total } = parseInstallment(t.description);
+            if (!grouped.has(baseName)) {
+                grouped.set(baseName, {
+                    transactions: [],
+                    cardBank: t.cardBank,
+                    totalPeriods: total
+                });
+            }
+            grouped.get(baseName)!.transactions.push(t);
+        });
+
+        // Calculate progress for each installment item
+        const items = Array.from(grouped.entries()).map(([name, data]) => {
+            const txs = data.transactions.sort((a, b) => a.date.localeCompare(b.date));
+            const paidTxs = txs.filter(t => t.isReconciled);
+            const totalPeriods = data.totalPeriods;
+            const paidPeriods = paidTxs.length;
+            const remainingPeriods = totalPeriods - paidPeriods;
+            const amountPerPeriod = txs[0]?.amount || 0;
+            const totalAmount = amountPerPeriod * totalPeriods;
+            const remainingAmount = amountPerPeriod * remainingPeriods;
+            const progress = totalPeriods > 0 ? Math.round((paidPeriods / totalPeriods) * 100) : 0;
+
+            // Calculate end date
+            const firstDate = new Date(txs[0]?.date || new Date());
+            const endDate = new Date(firstDate);
+            endDate.setMonth(endDate.getMonth() + totalPeriods - 1);
+            const endMonth = endDate.toISOString().slice(0, 7);
+
+            return {
+                name,
+                cardBank: data.cardBank,
+                totalPeriods,
+                paidPeriods,
+                remainingPeriods,
+                amountPerPeriod,
+                totalAmount,
+                remainingAmount,
+                progress,
+                endMonth,
+                isCompleted: paidPeriods >= totalPeriods
+            };
+        }).filter(item => !item.isCompleted) // Only show ongoing installments
+            .sort((a, b) => a.endMonth.localeCompare(b.endMonth));
+
+        // Calculate current month's installment total
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        const monthlyTotal = installmentTxs
+            .filter(t => t.date.startsWith(currentMonth))
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        return { items, monthlyTotal };
+    }, [transactions]);
 
     const categoryData: CategorySummary[] = useMemo(() => {
         const map = new Map<Category, number>();
@@ -252,6 +328,78 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks }
                     ))}
                 </div>
             </div>
+
+            {/* Installment Progress Section */}
+            {installmentProgress.items.length > 0 && (
+                <div className="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100">
+                    <div className="flex items-center gap-3 mb-4 md:mb-6">
+                        <div className="p-2 bg-violet-600 text-white rounded-xl"><CalendarClock size={20} /></div>
+                        <h3 className="text-base md:text-lg font-black text-slate-800">分期付款進度</h3>
+                        <div className="ml-auto flex items-center gap-2 bg-violet-50 text-violet-700 px-3 py-1.5 rounded-xl border border-violet-100">
+                            <span className="text-[10px] font-bold uppercase tracking-wide">本月分期總額</span>
+                            <span className="text-sm md:text-base font-black">${installmentProgress.monthlyTotal.toLocaleString()}</span>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+                        {installmentProgress.items.map((item) => (
+                            <div
+                                key={item.name}
+                                className="p-4 md:p-5 border border-slate-100 rounded-xl md:rounded-2xl bg-gradient-to-br from-slate-50/80 to-white hover:shadow-md transition-all"
+                            >
+                                {/* Header: Name & Bank */}
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="text-sm md:text-base font-black text-slate-800 truncate">{item.name}</h4>
+                                        <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded inline-flex items-center gap-1 mt-1">
+                                            <CreditCard size={10} /> {item.cardBank}
+                                        </span>
+                                    </div>
+                                    <div className="text-right shrink-0 ml-3">
+                                        <span className="text-[10px] font-bold text-slate-400 block">到期月份</span>
+                                        <span className="text-xs md:text-sm font-black text-slate-600">{item.endMonth}</span>
+                                    </div>
+                                </div>
+
+                                {/* Stats Row */}
+                                <div className="grid grid-cols-3 gap-2 mb-3">
+                                    <div className="bg-slate-50 rounded-lg p-2 text-center">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase block">期數</span>
+                                        <span className="text-xs font-black text-slate-700">
+                                            <span className="text-emerald-600">{item.paidPeriods}</span>/{item.totalPeriods}期
+                                        </span>
+                                    </div>
+                                    <div className="bg-slate-50 rounded-lg p-2 text-center">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase block">每期</span>
+                                        <span className="text-xs font-black text-slate-700">${item.amountPerPeriod.toLocaleString()}</span>
+                                    </div>
+                                    <div className="bg-amber-50 rounded-lg p-2 text-center">
+                                        <span className="text-[9px] font-bold text-amber-600 uppercase block">剩餘</span>
+                                        <span className="text-xs font-black text-amber-700">${item.remainingAmount.toLocaleString()}</span>
+                                    </div>
+                                </div>
+
+                                {/* Progress Bar */}
+                                <div className="space-y-1.5">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[10px] font-bold text-slate-400">繳款進度</span>
+                                        <span className="text-xs font-black text-violet-600">{item.progress}%</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-700"
+                                            style={{ width: `${item.progress}%` }}
+                                        />
+                                    </div>
+                                    <div className="flex justify-between text-[9px] font-bold text-slate-400">
+                                        <span>已繳 {item.paidPeriods} 期</span>
+                                        <span>剩餘 {item.remainingPeriods} 期</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                 <div className="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 h-[320px] md:h-[450px] flex flex-col relative">
