@@ -46,7 +46,7 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
     // - 結帳日 <= 15（次月結帳）：抓取 selectedMonth + 1 月的對帳資料
     const cardTotals = useMemo(() => {
         const result: Record<string, number> = {};
-        const banks = cardBanks.filter(b => b !== '-');
+        const banks = cardBanks.filter(b => b !== '-' && b !== '其他');
 
         // 取得選擇的月份資訊
         const [baseYear, baseMonth] = selectedMonth.split('-').map(Number);
@@ -58,14 +58,17 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
             let targetYear = baseYear;
             let targetMonth = baseMonth;
 
-            if (statementDay > 0 && statementDay <= 15) {
-                // 次月結帳的卡（如國泰3日、富邦2日），需要抓取 selectedMonth + 1 月的對帳資料
+            if (statementDay > 15) {
+                // 次月結帳的卡（結帳日 > 15，如遠傳28日），需要抓取 selectedMonth + 1 月的對帳資料
+                // 因為如果選擇1月，這些卡的帳單會在2月初寄出
                 targetMonth = baseMonth + 1;
                 if (targetMonth > 12) {
                     targetMonth = 1;
                     targetYear = baseYear + 1;
                 }
             }
+            // 結帳日 <= 15 的卡（如國泰3日、富邦2日、玉山15日）是當月結帳
+            // 選擇1月時，直接抓取1月的對帳資料
 
             // 使用與對帳頁面相同的週期計算邏輯
             // 週期範圍：上月 statementDay+1 日 到 本月 statementDay 日
@@ -315,7 +318,7 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                         </div>
 
                         {/* 信用卡 - 自動帶入 */}
-                        {cardBanks.filter(b => b !== '-').map(bank => {
+                        {cardBanks.filter(b => b !== '-' && b !== '其他').map(bank => {
                             const total = cardTotals[bank] || 0;
                             const statementDay = cardSettings[bank]?.statementDay;
                             return (
@@ -323,7 +326,7 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                                     <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><CreditCard size={14} /></div>
                                     <div className="flex-1">
                                         <span className="text-sm font-bold text-slate-700">{bank}</span>
-                                        {statementDay && <span className="text-[10px] text-slate-400 ml-2">{statementDay <= 15 ? '次月' : ''}{statementDay} 日</span>}
+                                        {statementDay && <span className="text-[10px] text-slate-400 ml-2">{statementDay > 15 ? '次月' : ''}{statementDay} 日</span>}
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <span className={`px-2 py-1 text-[10px] font-bold rounded ${total > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>

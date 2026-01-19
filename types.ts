@@ -10,8 +10,7 @@ export enum CardBank {
   ESUN = '玉山',
   TAISHIN = '台新',
   SINO = '永豐',
-  FUBON = '富邦',
-  OTHER = '其他'
+  FUBON = '富邦'
 }
 
 export type Category = string;
