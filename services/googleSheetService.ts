@@ -1,6 +1,6 @@
 
 // Added CardSetting to imports
-import { Transaction, CardSetting } from '../types';
+import { Transaction, CardSetting, IncomeSource, MonthlyBudget } from '../types';
 
 export interface BackupData {
   transactions: Transaction[];
@@ -9,6 +9,8 @@ export interface BackupData {
   cardBanks: string[]; // Added cardBanks to persistence
   // Added cardSettings to BackupData to fix type mismatch errors in App.tsx
   cardSettings: Record<string, CardSetting>;
+  incomeSources?: IncomeSource[];
+  budgets?: MonthlyBudget[];
 }
 
 export const saveToGoogleSheet = async (url: string, data: BackupData): Promise<boolean> => {
@@ -16,18 +18,18 @@ export const saveToGoogleSheet = async (url: string, data: BackupData): Promise<
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'text/plain;charset=utf-8', 
+        'Content-Type': 'text/plain;charset=utf-8',
       },
       body: JSON.stringify({ action: 'save', data }),
     });
-    
+
     if (!response.ok) throw new Error('Network response was not ok');
-    
+
     let res;
     try {
-        res = await response.json();
+      res = await response.json();
     } catch (e) {
-        throw new Error('Invalid response from server. Check URL permissions.');
+      throw new Error('Invalid response from server. Check URL permissions.');
     }
 
     if (!res.success) throw new Error(res.message || 'Save failed');
@@ -42,27 +44,27 @@ export const loadFromGoogleSheet = async (url: string): Promise<BackupData | nul
   try {
     const response = await fetch(`${url}?action=load`);
     if (!response.ok) throw new Error('Network response was not ok');
-    
+
     let res;
     try {
-        res = await response.json();
+      res = await response.json();
     } catch (e) {
-        throw new Error('Invalid response from server. Check URL permissions.');
+      throw new Error('Invalid response from server. Check URL permissions.');
     }
 
     if (res.success) {
-        if (res.chunks && Array.isArray(res.chunks)) {
-             try {
-                const fullJson = res.chunks.join('');
-                return fullJson ? JSON.parse(fullJson) : null;
-             } catch (parseError) {
-                console.error("Failed to assemble chunks", parseError);
-                throw new Error("Data corruption during download (JSON Parse Error)");
-             }
+      if (res.chunks && Array.isArray(res.chunks)) {
+        try {
+          const fullJson = res.chunks.join('');
+          return fullJson ? JSON.parse(fullJson) : null;
+        } catch (parseError) {
+          console.error("Failed to assemble chunks", parseError);
+          throw new Error("Data corruption during download (JSON Parse Error)");
         }
-        return res.data || null;
+      }
+      return res.data || null;
     }
-    
+
     throw new Error(res.message || 'Load failed');
   } catch (error) {
     console.error("Load from Cloud failed", error);

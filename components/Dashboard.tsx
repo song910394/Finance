@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
-import { Transaction, Category, CategorySummary, CardBank, PaymentMethod } from '../types';
+import { Transaction, Category, CategorySummary, CardBank, PaymentMethod, CardSetting } from '../types';
 import { getCategoryColor } from '../constants';
 import { Wallet, DollarSign, CreditCard, TrendingUp, Calendar, ChevronDown, ChevronLeft, ChevronRight, Banknote, X, ArrowRight, Filter, CalendarClock } from 'lucide-react';
 
@@ -9,9 +9,10 @@ interface DashboardProps {
     transactions: Transaction[];
     budget: number;
     cardBanks: string[];
+    cardSettings: Record<string, CardSetting>;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, cardSettings }) => {
     const [filterType, setFilterType] = useState<'month' | 'year' | 'all'>('month');
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
@@ -60,13 +61,68 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks }
 
     const cardStatus = useMemo(() => {
         const cards = cardBanks.filter(c => c !== CardBank.NONE && c !== '-');
+
+        // Helper function to get cycle range based on statement day
+        const getCycleRange = (bank: string, yearMonth: string) => {
+            const setting = cardSettings[bank];
+            if (!setting || !setting.statementDay) return null;
+
+            const [year, month] = yearMonth.split('-').map(Number);
+            const endDate = new Date(year, month - 1, setting.statementDay);
+            const startDate = new Date(year, month - 2, setting.statementDay + 1);
+
+            return {
+                start: startDate.toISOString().split('T')[0],
+                end: endDate.toISOString().split('T')[0]
+            };
+        };
+
         return cards.map(bank => {
-            const txs = statsTransactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === bank);
-            const unbilled = txs.filter(t => !t.isReconciled).reduce((sum, t) => sum + t.amount, 0);
-            const billedRecent = txs.filter(t => t.isReconciled).reduce((sum, t) => sum + t.amount, 0);
+            const allBankTxs = transactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === bank);
+            const statementDay = cardSettings[bank]?.statementDay || 0;
+
+            // 計算未出帳：所有未核銷的交易
+            const unbilled = allBankTxs.filter(t => !t.isReconciled).reduce((sum, t) => sum + t.amount, 0);
+
+            // 計算已核帳：使用與 BudgetManager/Reconciliation 相同的週期邏輯
+            let billedRecent = 0;
+
+            if (statementDay > 0) {
+                // 取得選擇的月份資訊
+                const [baseYear, baseMonth] = selectedMonth.split('-').map(Number);
+
+                // 決定應該抓取哪個月份的對帳資料
+                // 結帳日 > 15：次月結帳，需要抓取 selectedMonth + 1 月的對帳資料
+                // 結帳日 <= 15：當月結帳，直接抓取 selectedMonth 的對帳資料
+                let targetYear = baseYear;
+                let targetMonth = baseMonth;
+
+                if (statementDay > 15) {
+                    targetMonth = baseMonth + 1;
+                    if (targetMonth > 12) {
+                        targetMonth = 1;
+                        targetYear = baseYear + 1;
+                    }
+                }
+
+                // 使用週期計算邏輯
+                const targetYearMonth = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+                const range = getCycleRange(bank, targetYearMonth);
+
+                if (range) {
+                    billedRecent = allBankTxs
+                        .filter(t => t.isReconciled && t.date >= range.start && t.date <= range.end)
+                        .reduce((sum, t) => sum + t.amount, 0);
+                }
+            } else {
+                // 如果沒有設定結帳日，fallback 到原本邏輯（只顯示當月已核銷）
+                const txs = statsTransactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === bank);
+                billedRecent = txs.filter(t => t.isReconciled).reduce((sum, t) => sum + t.amount, 0);
+            }
+
             return { bank, unbilled, billedRecent };
         }).filter(c => c.unbilled > 0 || c.billedRecent > 0);
-    }, [statsTransactions, cardBanks]);
+    }, [transactions, statsTransactions, cardBanks, cardSettings, selectedMonth]);
 
     // Installment progress tracking - aggregate all installment transactions
     const installmentProgress = useMemo(() => {
