@@ -77,20 +77,38 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
             };
         };
 
+        // 計算當月和前一個月的範圍（用於未出帳計算）
+        const [baseYear, baseMonth] = selectedMonth.split('-').map(Number);
+        const currentMonthStart = `${selectedMonth}-01`;
+        const currentMonthEnd = new Date(baseYear, baseMonth, 0).toISOString().split('T')[0]; // 當月最後一天
+
+        // 前一個月
+        let prevYear = baseYear;
+        let prevMonth = baseMonth - 1;
+        if (prevMonth < 1) {
+            prevMonth = 12;
+            prevYear = baseYear - 1;
+        }
+        const prevMonthStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`;
+        const prevMonthEnd = new Date(prevYear, prevMonth, 0).toISOString().split('T')[0]; // 前月最後一天
+
         return cards.map(bank => {
             const allBankTxs = transactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === bank);
             const statementDay = cardSettings[bank]?.statementDay || 0;
 
-            // 計算未出帳：所有未核銷的交易
-            const unbilled = allBankTxs.filter(t => !t.isReconciled).reduce((sum, t) => sum + t.amount, 0);
+            // 計算未出帳：只計算「當月」或「前一個月」交易日期的未核銷金額（預估本期卡費）
+            const unbilled = allBankTxs.filter(t => {
+                if (t.isReconciled) return false;
+                // 只計算當月或前一個月的交易
+                const isCurrentMonth = t.date >= currentMonthStart && t.date <= currentMonthEnd;
+                const isPrevMonth = t.date >= prevMonthStart && t.date <= prevMonthEnd;
+                return isCurrentMonth || isPrevMonth;
+            }).reduce((sum, t) => sum + t.amount, 0);
 
             // 計算已核帳：使用與 BudgetManager/Reconciliation 相同的週期邏輯
             let billedRecent = 0;
 
             if (statementDay > 0) {
-                // 取得選擇的月份資訊
-                const [baseYear, baseMonth] = selectedMonth.split('-').map(Number);
-
                 // 決定應該抓取哪個月份的對帳資料
                 // 結帳日 > 15：次月結帳，需要抓取 selectedMonth + 1 月的對帳資料
                 // 結帳日 <= 15：當月結帳，直接抓取 selectedMonth 的對帳資料
