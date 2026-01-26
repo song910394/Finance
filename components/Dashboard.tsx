@@ -390,35 +390,55 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
 
             <div className="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100">
                 <div className="flex items-center gap-3 mb-4 md:mb-6">
-                    <div className="p-2 bg-slate-900 text-white rounded-xl"><TrendingUp size={20} /></div>
+                    <div className="p-2 bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-xl shadow-lg shadow-indigo-200"><TrendingUp size={20} /></div>
                     <h3 className="text-base md:text-lg font-black text-slate-800">信用卡動態分析</h3>
-                    <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-1 rounded-md ml-auto">點擊卡片查看明細</span>
+                    <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-md ml-auto font-medium">點擊卡片查看明細</span>
                 </div>
-                {/* Credit Card Grid: 2 cols on mobile (reduced gap), 3 cols on lg */}
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 md:gap-4">
+                {/* Credit Card Grid: 2 cols on mobile, 3 cols on lg */}
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                     {cardStatus.map((c) => (
                         <div
                             key={c.bank}
                             onClick={() => setDetailView({ type: 'card', title: c.bank })}
-                            className="p-3 md:p-4 border border-slate-100 rounded-xl md:rounded-2xl bg-slate-50/50 hover:bg-white hover:shadow-md hover:border-indigo-100 cursor-pointer transition-all group active:scale-[0.98]"
+                            className="relative overflow-hidden p-4 md:p-5 border border-slate-100 rounded-2xl bg-gradient-to-br from-white to-slate-50 hover:from-indigo-50 hover:to-purple-50 hover:shadow-lg hover:border-indigo-200 cursor-pointer transition-all duration-300 group active:scale-[0.98]"
                         >
-                            <div className="flex justify-between items-start mb-2">
-                                <span className="text-xs md:text-sm font-black text-slate-700 truncate">{c.bank}</span>
-                                <ArrowRight size={12} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />
+                            {/* Card Header */}
+                            <div className="flex justify-between items-center mb-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg shadow-sm">
+                                        <CreditCard size={14} className="text-white" />
+                                    </div>
+                                    <span className="text-sm md:text-base font-black text-slate-800">{c.bank}</span>
+                                </div>
+                                <ArrowRight size={16} className="text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
                             </div>
-                            <div className="space-y-2">
-                                <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-0.5">
-                                    <span className="text-[9px] text-amber-600 font-black uppercase tracking-tight">未出帳</span>
-                                    <span className="text-base md:text-xl font-black text-slate-800">${c.unbilled.toLocaleString()}</span>
+
+                            {/* 未出帳區塊 - 主要金額 */}
+                            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-3 mb-3 border border-amber-100">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                    <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
+                                    <span className="text-xs font-bold text-amber-600 uppercase tracking-wide">未出帳</span>
                                 </div>
-                                <div className="w-full bg-slate-200 h-1 rounded-full overflow-hidden">
-                                    <div className="bg-amber-400 h-full rounded-full" style={{ width: '100%' }}></div>
-                                </div>
-                                <div className="flex justify-between items-center pt-1">
-                                    <span className="text-[9px] text-slate-400 font-bold">本期已核</span>
-                                    <span className="text-[10px] font-black text-slate-400">${c.billedRecent.toLocaleString()}</span>
-                                </div>
+                                <p className="text-xl md:text-2xl font-black text-slate-800">
+                                    ${c.unbilled.toLocaleString()}
+                                </p>
+                                <p className="text-[10px] text-amber-500 font-medium mt-0.5">預估下期卡費</p>
                             </div>
+
+                            {/* 已核帳區塊 */}
+                            <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-3 border border-emerald-100">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                    <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
+                                    <span className="text-xs font-bold text-emerald-600 uppercase tracking-wide">本期已核</span>
+                                </div>
+                                <p className="text-lg md:text-xl font-black text-slate-700">
+                                    ${c.billedRecent.toLocaleString()}
+                                </p>
+                                <p className="text-[10px] text-emerald-500 font-medium mt-0.5">已對帳確認</p>
+                            </div>
+
+                            {/* 裝飾背景 */}
+                            <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-gradient-to-br from-indigo-100/30 to-purple-100/30 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
                         </div>
                     ))}
                 </div>
