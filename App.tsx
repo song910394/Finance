@@ -194,16 +194,16 @@ function App() {
             <NavItem icon={<SettingsIcon size={20} />} label={Tab.SETTINGS} isActive={activeTab === Tab.SETTINGS} onClick={() => setActiveTab(Tab.SETTINGS)} />
           </div>
         </nav>
-        <div className="p-4 bg-gray-50 border-t border-gray-100">
-          <div className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-1">
+        <div className="p-4 bg-slate-50 border-t border-slate-100">
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-1">
             {renderSyncIcon()}
-            <span>
+            <span className="font-number">
               {syncStatus === 'saved' ? `已同步 ${lastSyncedTime}` :
                 syncStatus === 'syncing' ? '同步中...' :
                   syncStatus === 'error' ? '同步失敗' : '未連線'}
             </span>
           </div>
-          <p className="text-[10px] text-gray-400 mt-2">© 2024 H&S記帳</p>
+          <p className="text-[10px] text-slate-400 mt-2 font-display">© 2024 H&S記帳</p>
         </div>
       </aside>
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
@@ -214,9 +214,9 @@ function App() {
             </div>
             <h1 className="text-lg font-bold text-gray-800">H&S記帳</h1>
           </div>
-          <div className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded-full border border-gray-100">
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100 shadow-sm">
             {renderSyncIcon()}
-            {syncStatus === 'saved' && <span className="text-[10px] text-gray-500 font-mono">{lastSyncedTime}</span>}
+            {syncStatus === 'saved' && <span className="text-[10px] text-slate-500 font-number">{lastSyncedTime}</span>}
           </div>
         </header>
         <main className="flex-1 overflow-y-auto scrollbar-hide bg-[#f8fafc]">
@@ -286,16 +286,27 @@ function App() {
 }
 
 const NavItem = ({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) => (
-  <button onClick={onClick} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 group ${isActive ? 'bg-blue-50 text-blue-600 font-semibold shadow-sm' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}>
-    <span className={`${isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`}>{icon}</span>
+  <button
+    onClick={onClick}
+    className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl transition-all duration-300 group outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${isActive
+      ? 'bg-indigo-50 text-indigo-600 font-bold shadow-sm translate-x-1'
+      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 hover:translate-x-1'
+      }`}
+    aria-label={label}
+  >
+    <span className={`transition-colors duration-300 ${isActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-600'}`}>{icon}</span>
     <span>{label}</span>
   </button>
 );
 
 const MobileNavItem = ({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) => (
-  <button onClick={onClick} className="flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
-    <div className={`p-1.5 rounded-full transition-colors ${isActive ? 'text-blue-600 bg-blue-50' : 'text-gray-400'}`}>{icon}</div>
-    <span className={`text-[10px] font-medium ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>{label}</span>
+  <button
+    onClick={onClick}
+    className="flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform touch-target outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg"
+    aria-label={label}
+  >
+    <div className={`p-2 rounded-xl transition-all duration-300 ${isActive ? 'text-indigo-600 bg-indigo-50 shadow-sm -translate-y-1' : 'text-slate-400'}`}>{icon}</div>
+    <span className={`text-[10px] font-medium transition-colors duration-300 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>{label}</span>
   </button>
 );
 

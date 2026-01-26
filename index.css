@@ -1,5 +1,128 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;700;900&family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
 
-/* 這是佔位 CSS，用於消除控制台報錯 */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  /* Color System */
+  --color-primary: #4F46E5;
+  --color-primary-light: #EEF2FF;
+  --color-primary-dark: #4338CA;
+  
+  --color-success: #10B981;
+  --color-success-light: #ECFDF5;
+  
+  --color-warning: #F59E0B;
+  --color-warning-light: #FFFBEB;
+  
+  --color-danger: #EF4444;
+  --color-danger-light: #FEF2F2;
+  
+  --color-bg: #F8FAFC;
+  --color-surface: #FFFFFF;
+  
+  /* Typography */
+  --font-display: 'DM Sans', sans-serif;
+  --font-body: 'Noto Sans TC', sans-serif;
+  
+  /* Spacing & Layout */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-full: 9999px;
+  
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-glow: 0 0 15px rgba(79, 70, 229, 0.3);
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-bg);
+  color: #1E293B;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6, .font-display {
+  font-family: var(--font-body); /* Use Noto Sans TC for headings too for consistency with Chinese */
+}
+
+.font-number {
+  font-family: var(--font-display);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out forwards;
+}
+
+/* Utilities */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* Focus Styles for Accessibility */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Mobile Safe Area */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 20px);
+}

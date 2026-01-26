@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Transaction, Category, CategorySummary, CardBank, PaymentMethod, CardSetting } from '../types';
 import { getCategoryColor } from '../constants';
-import { Wallet, DollarSign, CreditCard, TrendingUp, Calendar, ChevronDown, ChevronLeft, ChevronRight, Banknote, X, ArrowRight, Filter, CalendarClock } from 'lucide-react';
+import { Wallet, DollarSign, CreditCard, TrendingUp, Calendar, ChevronDown, ChevronLeft, ChevronRight, Banknote, X, ArrowRight, Filter, CalendarClock, PieChart as PieChartIcon, List } from 'lucide-react';
 
 interface DashboardProps {
     transactions: Transaction[];
@@ -345,45 +345,45 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
             </div>
 
             {/* Summary Cards: 2 cols on mobile, 4 cols on lg */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-6">
-                <div className="bg-white p-3 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100">
-                    <div className="flex items-center gap-2 md:gap-3 mb-1 md:mb-4">
-                        <div className="p-1.5 md:p-2 bg-indigo-50 text-indigo-600 rounded-lg md:rounded-xl"><DollarSign size={14} className="md:w-5 md:h-5" /></div>
-                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate">總支出</p>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+                <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 hover:shadow-lg hover:shadow-indigo-100/50 hover:-translate-y-1 transition-all duration-300 group">
+                    <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
+                        <div className="p-2 md:p-2.5 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform duration-300"><DollarSign size={16} className="md:w-5 md:h-5" /></div>
+                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate font-display">總支出</p>
                     </div>
-                    <h3 className="text-lg md:text-3xl font-black text-slate-800">${totalExpense.toLocaleString()}</h3>
-                    <p className="text-[10px] text-slate-400 mt-1 font-bold">預算剩餘: <span className={effectiveBudget - totalExpense < 0 ? 'text-rose-500' : 'text-emerald-500'}>${(effectiveBudget - totalExpense).toLocaleString()}</span></p>
+                    <h3 className="text-xl md:text-3xl font-black text-slate-800 font-number tracking-tight">${totalExpense.toLocaleString()}</h3>
+                    <p className="text-[10px] text-slate-400 mt-1 font-bold">預算剩餘: <span className={`font-number ${effectiveBudget - totalExpense < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>${(effectiveBudget - totalExpense).toLocaleString()}</span></p>
                 </div>
 
-                <div className="bg-white p-3 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100">
-                    <div className="flex items-center gap-2 md:gap-3 mb-1 md:mb-4">
-                        <div className="p-1.5 md:p-2 bg-emerald-50 text-emerald-600 rounded-lg md:rounded-xl"><Wallet size={14} className="md:w-5 md:h-5" /></div>
-                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate">預算達成率</p>
+                <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 hover:shadow-lg hover:shadow-emerald-100/50 hover:-translate-y-1 transition-all duration-300 group">
+                    <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
+                        <div className="p-2 md:p-2.5 bg-emerald-50 text-emerald-600 rounded-xl group-hover:scale-110 transition-transform duration-300"><Wallet size={16} className="md:w-5 md:h-5" /></div>
+                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate font-display">預算達成率</p>
                     </div>
                     <div className="flex justify-between items-end mb-2">
-                        <h3 className="text-lg md:text-3xl font-black text-slate-800">{Math.round((totalExpense / effectiveBudget) * 100)}%</h3>
-                        <span className="text-[10px] text-slate-400 font-bold hidden md:inline">目標: ${effectiveBudget.toLocaleString()}</span>
+                        <h3 className="text-xl md:text-3xl font-black text-slate-800 font-number tracking-tight">{Math.round((totalExpense / effectiveBudget) * 100)}%</h3>
+                        <span className="text-[10px] text-slate-400 font-bold hidden md:inline font-number">目標: ${effectiveBudget.toLocaleString()}</span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-1.5 md:h-2 overflow-hidden">
-                        <div className={`h-full transition-all duration-700 ${budgetProgress > 90 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${budgetProgress}%` }}></div>
+                        <div className={`h-full transition-all duration-1000 ease-out ${budgetProgress > 90 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${budgetProgress}%` }}></div>
                     </div>
                 </div>
 
-                <div className="bg-white p-3 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100">
-                    <div className="flex items-center gap-2 md:gap-3 mb-1 md:mb-4">
-                        <div className="p-1.5 md:p-2 bg-amber-50 text-amber-600 rounded-lg md:rounded-xl"><Banknote size={14} className="md:w-5 md:h-5" /></div>
-                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate">現金支出</p>
+                <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 hover:shadow-lg hover:shadow-amber-100/50 hover:-translate-y-1 transition-all duration-300 group">
+                    <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
+                        <div className="p-2 md:p-2.5 bg-amber-50 text-amber-600 rounded-xl group-hover:scale-110 transition-transform duration-300"><Banknote size={16} className="md:w-5 md:h-5" /></div>
+                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate font-display">現金支出</p>
                     </div>
-                    <h3 className="text-lg md:text-3xl font-black text-slate-800">${cashTotal.toLocaleString()}</h3>
-                    <p className="text-[10px] text-slate-400 mt-1 font-bold">佔總開銷 {totalExpense > 0 ? Math.round((cashTotal / totalExpense) * 100) : 0}%</p>
+                    <h3 className="text-xl md:text-3xl font-black text-slate-800 font-number tracking-tight">${cashTotal.toLocaleString()}</h3>
+                    <p className="text-[10px] text-slate-400 mt-1 font-bold">佔總開銷 <span className="font-number">{totalExpense > 0 ? Math.round((cashTotal / totalExpense) * 100) : 0}%</span></p>
                 </div>
 
-                <div className="bg-white p-3 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100">
-                    <div className="flex items-center gap-2 md:gap-3 mb-1 md:mb-4">
-                        <div className="p-1.5 md:p-2 bg-indigo-50 text-indigo-600 rounded-lg md:rounded-xl"><CreditCard size={14} className="md:w-5 md:h-5" /></div>
-                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate">刷卡總計</p>
+                <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 hover:shadow-lg hover:shadow-purple-100/50 hover:-translate-y-1 transition-all duration-300 group">
+                    <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
+                        <div className="p-2 md:p-2.5 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform duration-300"><CreditCard size={16} className="md:w-5 md:h-5" /></div>
+                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate font-display">刷卡總計</p>
                     </div>
-                    <h3 className="text-lg md:text-3xl font-black text-slate-800">${creditCardTotal.toLocaleString()}</h3>
+                    <h3 className="text-xl md:text-3xl font-black text-slate-800 font-number tracking-tight">${creditCardTotal.toLocaleString()}</h3>
                     <p className="text-[10px] text-slate-400 mt-1 font-bold">目前已刷金額</p>
                 </div>
             </div>
@@ -400,7 +400,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                         <div
                             key={c.bank}
                             onClick={() => setDetailView({ type: 'card', title: c.bank })}
-                            className="relative overflow-hidden p-4 md:p-5 border border-slate-100 rounded-2xl bg-gradient-to-br from-white to-slate-50 hover:from-indigo-50 hover:to-purple-50 hover:shadow-lg hover:border-indigo-200 cursor-pointer transition-all duration-300 group active:scale-[0.98]"
+                            className="relative overflow-hidden p-4 md:p-5 border border-slate-100 rounded-2xl bg-gradient-to-br from-white to-slate-50 hover:from-indigo-50 hover:to-purple-50 hover:shadow-lg hover:shadow-indigo-100/40 hover:border-indigo-200 cursor-pointer transition-all duration-300 group active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-indigo-500 outline-none"
+                            tabIndex={0}
+                            role="button"
+                            aria-label={`查看 ${c.bank} 詳細資訊`}
                         >
                             {/* Card Header */}
                             <div className="flex justify-between items-center mb-4">
@@ -627,7 +630,13 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                                 <text x="0" y="10" textAnchor="middle" className="text-[11px] md:text-[13px] fill-slate-800 font-black">${totalExpense.toLocaleString()}</text>
                             </svg>
                         ) : (
-                            <p className="text-slate-400 text-sm italic">無消費數據</p>
+                            <div className="flex flex-col items-center justify-center h-full animate-fade-in">
+                                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3">
+                                    <PieChartIcon className="text-slate-300" size={32} />
+                                </div>
+                                <p className="text-slate-500 text-sm font-bold">無消費數據</p>
+                                <p className="text-slate-400 text-xs mt-1">本月尚無支出紀錄</p>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -654,7 +663,12 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                             </div>
                         ))}
                         {categoryData.length === 0 && (
-                            <p className="text-center py-10 text-slate-400 text-sm italic">無相關消費數據</p>
+                            <div className="flex flex-col items-center justify-center py-10 animate-fade-in">
+                                <div className="p-3 bg-slate-50 rounded-full mb-3">
+                                    <List size={24} className="text-slate-300" />
+                                </div>
+                                <p className="text-slate-400 text-sm font-medium">無相關消費數據</p>
+                            </div>
                         )}
                     </div>
                 </div>

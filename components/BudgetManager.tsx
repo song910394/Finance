@@ -167,63 +167,66 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                     <p className="text-[10px] md:text-xs text-slate-500 font-medium">追蹤每月入帳與信用卡出帳</p>
                 </div>
 
-                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-2 py-1.5 shadow-sm">
-                    <button onClick={prevMonth} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors" title="上個月">
+                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-2 py-1.5 shadow-sm hover:shadow-md transition-shadow">
+                    <button onClick={prevMonth} className="p-2 hover:bg-slate-100 rounded-xl transition-colors active:scale-95 touch-target" title="上個月">
                         <ChevronLeft size={18} className="text-slate-500" />
                     </button>
                     <input
                         type="month"
                         value={selectedMonth}
                         onChange={e => setSelectedMonth(e.target.value)}
-                        className="w-[120px] px-2 py-1 text-sm text-slate-700 font-black focus:outline-none bg-transparent cursor-pointer text-center"
+                        className="w-[120px] px-2 py-1 text-sm text-slate-700 font-black focus:outline-none bg-transparent cursor-pointer text-center font-number"
                     />
-                    <button onClick={nextMonth} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors" title="下個月">
+                    <button onClick={nextMonth} className="p-2 hover:bg-slate-100 rounded-xl transition-colors active:scale-95 touch-target" title="下個月">
                         <ChevronRight size={18} className="text-slate-500" />
                     </button>
                 </div>
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
-                <div className="bg-white p-3 md:p-5 rounded-2xl shadow-sm border border-slate-100">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group">
                     <div className="flex items-center gap-2 mb-2">
-                        <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg"><Wallet size={14} /></div>
-                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase">期初餘額</p>
+                        <div className="p-2 bg-slate-100 text-slate-600 rounded-xl group-hover:scale-110 transition-transform"><Wallet size={16} /></div>
+                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase font-display">期初餘額</p>
                     </div>
-                    <input
-                        type="number"
-                        value={currentBudget.openingBalance || ''}
-                        onChange={e => updateBudget({ openingBalance: parseFloat(e.target.value) || 0 })}
-                        placeholder="0"
-                        className="text-lg md:text-2xl font-black text-slate-800 bg-transparent w-full focus:outline-none"
-                    />
+                    <div className="relative">
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                        <input
+                            type="number"
+                            value={currentBudget.openingBalance || ''}
+                            onChange={e => updateBudget({ openingBalance: parseFloat(e.target.value) || 0 })}
+                            placeholder="0"
+                            className="text-xl md:text-3xl font-black text-slate-800 bg-transparent w-full focus:outline-none pl-4 font-number"
+                        />
+                    </div>
                 </div>
 
-                <div className="bg-emerald-50 p-3 md:p-5 rounded-2xl shadow-sm border border-emerald-100">
+                <div className="bg-emerald-50 p-4 md:p-5 rounded-2xl shadow-sm border border-emerald-100 hover:shadow-lg hover:shadow-emerald-100/50 hover:-translate-y-1 transition-all duration-300 group">
                     <div className="flex items-center gap-2 mb-2">
-                        <div className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg"><TrendingUp size={14} /></div>
-                        <p className="text-[10px] md:text-xs font-black text-emerald-600 uppercase">入帳小計</p>
+                        <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl group-hover:scale-110 transition-transform"><TrendingUp size={16} /></div>
+                        <p className="text-[10px] md:text-xs font-black text-emerald-600 uppercase font-display">入帳小計</p>
                     </div>
-                    <h3 className="text-lg md:text-2xl font-black text-emerald-700">${stats.incomeTotal.toLocaleString()}</h3>
+                    <h3 className="text-xl md:text-3xl font-black text-emerald-700 font-number tracking-tight">${stats.incomeTotal.toLocaleString()}</h3>
                 </div>
 
-                <div className="bg-rose-50 p-3 md:p-5 rounded-2xl shadow-sm border border-rose-100">
+                <div className="bg-rose-50 p-4 md:p-5 rounded-2xl shadow-sm border border-rose-100 hover:shadow-lg hover:shadow-rose-100/50 hover:-translate-y-1 transition-all duration-300 group">
                     <div className="flex items-center gap-2 mb-2">
-                        <div className="p-1.5 bg-rose-100 text-rose-600 rounded-lg"><TrendingDown size={14} /></div>
-                        <p className="text-[10px] md:text-xs font-black text-rose-600 uppercase">出帳小計</p>
+                        <div className="p-2 bg-rose-100 text-rose-600 rounded-xl group-hover:scale-110 transition-transform"><TrendingDown size={16} /></div>
+                        <p className="text-[10px] md:text-xs font-black text-rose-600 uppercase font-display">出帳小計</p>
                     </div>
-                    <h3 className="text-lg md:text-2xl font-black text-rose-700">${stats.expenseTotal.toLocaleString()}</h3>
+                    <h3 className="text-xl md:text-3xl font-black text-rose-700 font-number tracking-tight">${stats.expenseTotal.toLocaleString()}</h3>
                 </div>
 
-                <div className={`p-3 md:p-5 rounded-2xl shadow-sm border ${stats.balance >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-amber-50 border-amber-100'}`}>
+                <div className={`p-4 md:p-5 rounded-2xl shadow-sm border hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group ${stats.balance >= 0 ? 'bg-blue-50 border-blue-100 hover:shadow-blue-100/50' : 'bg-amber-50 border-amber-100 hover:shadow-amber-100/50'}`}>
                     <div className="flex items-center gap-2 mb-2">
-                        <div className={`p-1.5 rounded-lg ${stats.balance >= 0 ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'}`}><Calculator size={14} /></div>
-                        <p className={`text-[10px] md:text-xs font-black uppercase ${stats.balance >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>合計</p>
+                        <div className={`p-2 rounded-xl group-hover:scale-110 transition-transform ${stats.balance >= 0 ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'}`}><Calculator size={16} /></div>
+                        <p className={`text-[10px] md:text-xs font-black uppercase font-display ${stats.balance >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>合計</p>
                     </div>
-                    <h3 className={`text-lg md:text-2xl font-black ${stats.balance >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>
+                    <h3 className={`text-xl md:text-3xl font-black font-number tracking-tight ${stats.balance >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>
                         ${stats.balance.toLocaleString()}
                     </h3>
-                    <p className="text-[10px] text-slate-500 mt-1">{stats.balance >= 0 ? '結餘' : '缺額'}</p>
+                    <p className="text-[10px] text-slate-500 mt-1 font-bold">{stats.balance >= 0 ? '結餘' : '缺額'}</p>
                 </div>
             </div>
 
@@ -261,7 +264,7 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                         {incomeSources.map(source => {
                             const incomeData = currentBudget.incomes.find(i => i.sourceId === source.id);
                             return (
-                                <div key={source.id} className="flex items-center gap-3 p-3 bg-slate-50/50 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors group">
+                                <div key={source.id} className="flex items-center gap-3 p-3 bg-slate-50/50 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors group focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-200">
                                     <div className="flex-1">
                                         <span className="text-sm font-bold text-slate-700">{source.name}</span>
                                         {source.defaultDay && <span className="text-[10px] text-slate-400 ml-2">每月 {source.defaultDay} 日</span>}
@@ -273,13 +276,14 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                                             value={incomeData?.amount || ''}
                                             onChange={e => updateIncomeAmount(source.id, parseFloat(e.target.value) || 0)}
                                             placeholder="0"
-                                            className="w-24 px-2 py-1.5 text-right text-sm font-bold text-emerald-600 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                            className="w-28 px-3 py-2 text-right text-sm font-bold text-emerald-600 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-number"
                                         />
                                         <button
                                             onClick={() => deleteIncomeSource(source.id)}
-                                            className="p-1 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"
+                                            className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all touch-target"
+                                            aria-label="刪除"
                                         >
-                                            <Trash2 size={14} />
+                                            <Trash2 size={16} />
                                         </button>
                                     </div>
                                 </div>
@@ -300,8 +304,8 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
 
                     <div className="space-y-3">
                         {/* 貸款 */}
-                        <div className="flex items-center gap-3 p-3 bg-amber-50/50 rounded-xl border border-amber-100">
-                            <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><Home size={14} /></div>
+                        <div className="flex items-center gap-3 p-3 bg-amber-50/50 rounded-xl border border-amber-100 hover:bg-amber-50 transition-colors focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-200">
+                            <div className="p-2 bg-amber-100 text-amber-600 rounded-xl"><Home size={16} /></div>
                             <div className="flex-1">
                                 <span className="text-sm font-bold text-slate-700">貸款</span>
                                 <span className="text-[10px] text-slate-400 ml-2">每月 28 日</span>
@@ -313,7 +317,7 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                                     value={currentBudget.loan || ''}
                                     onChange={e => updateBudget({ loan: parseFloat(e.target.value) || 0 })}
                                     placeholder="0"
-                                    className="w-24 px-2 py-1.5 text-right text-sm font-bold text-amber-600 bg-white border border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                                    className="w-28 px-3 py-2 text-right text-sm font-bold text-amber-600 bg-white border border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-number"
                                 />
                             </div>
                         </div>
@@ -326,7 +330,7 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                             const isNextMonth = setting?.isNextMonth;
                             return (
                                 <div key={bank} className="flex items-center gap-3 p-3 bg-indigo-50/30 rounded-xl border border-indigo-100/50 hover:bg-indigo-50/50 transition-colors">
-                                    <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><CreditCard size={14} /></div>
+                                    <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl"><CreditCard size={16} /></div>
                                     <div className="flex-1">
                                         <span className="text-sm font-bold text-slate-700">{bank}</span>
                                         {statementDay && <span className="text-[10px] text-slate-400 ml-2">{isNextMonth ? '次月' : ''}{statementDay} 日</span>}
@@ -335,7 +339,7 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                                         <span className={`px-2 py-1 text-[10px] font-bold rounded ${total > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
                                             自動
                                         </span>
-                                        <span className="text-sm font-black text-indigo-600 w-20 text-right">
+                                        <span className="text-sm font-black text-indigo-600 w-20 text-right font-number">
                                             ${total.toLocaleString()}
                                         </span>
                                     </div>

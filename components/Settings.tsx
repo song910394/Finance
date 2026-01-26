@@ -105,25 +105,43 @@ const Settings: React.FC<SettingsProps> = ({
   return (
     <div className="max-w-2xl mx-auto space-y-8 animate-fade-in pb-12">
       {/* Cloud Sync Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6">
-        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+      <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6 hover:shadow-lg transition-shadow duration-300">
+        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2 font-display">
           <CloudUpload size={20} className="text-blue-600" />
           Google 試算表同步 (V5)
         </h3>
         <div className="space-y-4">
-          <input type="text" value={scriptUrl} onChange={(e) => setScriptUrl(e.target.value)} placeholder="https://script.google.com/..." className="w-full p-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-sm font-mono" />
+          <div className="relative">
+            <input
+              type="text"
+              value={scriptUrl}
+              onChange={(e) => setScriptUrl(e.target.value)}
+              placeholder="https://script.google.com/..."
+              className="w-full p-3 border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono transition-all outline-none"
+              aria-label="Apps Script URL"
+            />
+          </div>
           <div className="flex gap-3">
-            <button onClick={() => handleSync(true)} disabled={isSyncing} className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 shadow-md">
+            <button
+              onClick={() => handleSync(true)}
+              disabled={isSyncing}
+              className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] touch-target"
+            >
               {isSyncing ? <RefreshCw className="animate-spin" size={18} /> : <CloudUpload size={18} />}
               立即備份至雲端
             </button>
-            <button onClick={() => handleSync(false)} disabled={isSyncing} className="flex-1 py-3 px-4 bg-white border-2 border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+            <button
+              onClick={() => handleSync(false)}
+              disabled={isSyncing}
+              className="flex-1 py-3 px-4 bg-white border-2 border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center gap-2 hover:-translate-y-0.5 active:scale-[0.98] touch-target"
+            >
               <CloudDownload size={18} />
               從雲端還原
             </button>
           </div>
           {syncStatus && (
-            <div className={`p-3 rounded-xl text-sm font-bold ${syncStatus.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+            <div className={`p-3 rounded-xl text-sm font-bold animate-fade-in flex items-center gap-2 ${syncStatus.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'}`}>
+              {syncStatus.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
               {syncStatus.msg}
             </div>
           )}
@@ -131,12 +149,12 @@ const Settings: React.FC<SettingsProps> = ({
       </div>
 
       {/* Credit Card Settings Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:shadow-lg transition-shadow duration-300">
+        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2 font-display">
           <Calendar size={20} className="text-blue-600" />
           信用卡帳單日設定
         </h3>
-        <p className="text-xs text-gray-500 mb-6">設定每張卡的每月結帳日，系統將自動區分「本期預估應繳」與「未來分期金額」。</p>
+        <p className="text-xs text-slate-500 mb-6">設定每張卡的每月結帳日，系統將自動區分「本期預估應繳」與「未來分期金額」。</p>
 
         <div className="space-y-4">
           {cardBanks.filter(b => b !== '-' && b !== '其他').map(bank => {
@@ -144,29 +162,30 @@ const Settings: React.FC<SettingsProps> = ({
             const isNextMonth = setting?.isNextMonth || false;
             const statementDay = setting?.statementDay || 0;
             return (
-              <div key={bank} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+              <div key={bank} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 hover:bg-white hover:shadow-md transition-all group">
                 <div className="flex flex-col">
-                  <span className="font-bold text-gray-700">{bank} 信用卡</span>
-                  <span className="text-[10px] text-gray-400">
-                    目前設定: {isNextMonth ? '次月' : '當月'} {statementDay || '--'} 日結帳
+                  <span className="font-bold text-slate-700">{bank} 信用卡</span>
+                  <span className="text-[10px] text-slate-400">
+                    目前設定: {isNextMonth ? '次月' : '當月'} <span className="font-number">{statementDay || '--'}</span> 日結帳
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 cursor-pointer">
+                  <label className="flex items-center gap-1.5 cursor-pointer p-2 hover:bg-slate-100 rounded-lg transition-colors touch-target">
                     <input
                       type="checkbox"
                       checked={isNextMonth}
                       onChange={() => handleToggleNextMonth(bank)}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 border-slate-300"
                     />
-                    <span className="text-xs text-gray-500">次月結帳</span>
+                    <span className="text-xs text-slate-500 font-medium">次月結帳</span>
                   </label>
                   <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-500">結帳日:</label>
+                    <label className="text-xs text-slate-500 font-medium">結帳日:</label>
                     <select
                       value={statementDay || ""}
                       onChange={(e) => handleUpdateStatementDay(bank, e.target.value)}
-                      className="p-2 border border-gray-300 rounded-lg text-sm bg-white font-bold text-blue-600 focus:ring-2 focus:ring-blue-500"
+                      className="p-2 border border-slate-200 rounded-lg text-sm bg-white font-bold text-blue-600 focus:ring-2 focus:ring-blue-500 outline-none font-number cursor-pointer hover:border-blue-300 transition-colors"
+                      aria-label={`${bank} 結帳日`}
                     >
                       <option value="">未設定</option>
                       {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
@@ -181,54 +200,96 @@ const Settings: React.FC<SettingsProps> = ({
         </div>
 
         <div className="mt-6 flex gap-2">
-          <input type="text" placeholder="新增銀行名稱..." value={newBank} onChange={(e) => setNewBank(e.target.value)} className="flex-1 p-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500" onKeyDown={(e) => e.key === 'Enter' && handleAddBank()} />
-          <button onClick={handleAddBank} disabled={!newBank} className="px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50"><Plus size={24} /></button>
+          <input
+            type="text"
+            placeholder="新增銀行名稱..."
+            value={newBank}
+            onChange={(e) => setNewBank(e.target.value)}
+            className="flex-1 p-3 border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+            onKeyDown={(e) => e.key === 'Enter' && handleAddBank()}
+          />
+          <button
+            onClick={handleAddBank}
+            disabled={!newBank}
+            className="px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 touch-target transition-all hover:shadow-md active:scale-95"
+            aria-label="新增銀行"
+          >
+            <Plus size={24} />
+          </button>
         </div>
       </div>
 
       {/* Category Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-bold text-gray-800 mb-4">預算與類別管理</h3>
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:shadow-lg transition-shadow duration-300">
+        <h3 className="text-lg font-bold text-slate-800 mb-4 font-display">預算與類別管理</h3>
         <div className="space-y-6">
           <div>
-            <label className="block text-sm font-bold text-gray-600 mb-1">每月目標預算</label>
+            <label className="block text-sm font-bold text-slate-600 mb-1">每月目標預算</label>
             <div className="flex gap-2">
-              <input type="number" value={tempBudget} onChange={(e) => setTempBudget(e.target.value)} className="flex-1 p-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold" />
-              <button onClick={handleSaveBudget} className="px-4 py-2 bg-gray-900 text-white rounded-xl font-bold flex items-center gap-2">
-                <Save size={18} /> 儲存
+              <input
+                type="number"
+                value={tempBudget}
+                onChange={(e) => setTempBudget(e.target.value)}
+                className="flex-1 p-3 border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold font-number"
+              />
+              <button
+                onClick={handleSaveBudget}
+                className={`px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all touch-target ${isBudgetSaved ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
+              >
+                {isBudgetSaved ? <CheckCircle2 size={18} /> : <Save size={18} />}
+                {isBudgetSaved ? '已儲存' : '儲存'}
               </button>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-gray-600 mb-2">消費類別</label>
+            <label className="block text-sm font-bold text-slate-600 mb-2">消費類別</label>
             <div className="flex flex-wrap gap-2 mb-4">
               {categories.map(cat => (
-                <div key={cat} className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg">
-                  <span className="text-sm font-medium text-gray-700">{cat}</span>
-                  <button onClick={() => onUpdateCategories(categories.filter(c => c !== cat))} className="text-gray-400 hover:text-red-500"><X size={14} /></button>
+                <div key={cat} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg hover:bg-white hover:shadow-sm transition-all group">
+                  <span className="text-sm font-medium text-slate-700">{cat}</span>
+                  <button
+                    onClick={() => onUpdateCategories(categories.filter(c => c !== cat))}
+                    className="text-slate-400 hover:text-rose-500 p-1 rounded-md hover:bg-rose-50 transition-colors"
+                    aria-label={`刪除 ${cat}`}
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
               ))}
             </div>
             <div className="flex gap-2">
-              <input type="text" placeholder="新類別..." value={newCategory} onChange={(e) => setNewCategory(e.target.value)} className="flex-1 p-2 border border-gray-300 rounded-lg text-sm" onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()} />
-              <button onClick={handleAddCategory} className="px-3 bg-blue-600 text-white rounded-lg"><Plus size={18} /></button>
+              <input
+                type="text"
+                placeholder="新類別..."
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                className="flex-1 p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+              />
+              <button
+                onClick={handleAddCategory}
+                className="px-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors touch-target"
+                aria-label="新增類別"
+              >
+                <Plus size={18} />
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="bg-red-50 rounded-2xl shadow-sm border border-red-100 p-6">
-        <h3 className="text-lg font-bold text-red-700 mb-4 flex items-center gap-2"><AlertTriangle size={20} /> 危險區域</h3>
+      <div className="bg-rose-50 rounded-2xl shadow-sm border border-rose-100 p-6 hover:shadow-lg hover:shadow-rose-100/50 transition-all duration-300">
+        <h3 className="text-lg font-bold text-rose-700 mb-4 flex items-center gap-2 font-display"><AlertTriangle size={20} /> 危險區域</h3>
         <div className="flex justify-between items-center">
-          <p className="text-xs text-red-600 font-medium">重置所有資料後將無法復原，請確保您有先導出備份。</p>
+          <p className="text-xs text-rose-600 font-medium">重置所有資料後將無法復原，請確保您有先導出備份。</p>
           {confirmReset ? (
-            <div className="flex gap-2">
-              <button onClick={() => setConfirmReset(false)} className="px-3 py-1.5 bg-white border border-gray-300 text-gray-600 rounded-lg text-xs font-bold">取消</button>
-              <button onClick={() => { onResetData(); setConfirmReset(false); }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-black shadow-sm">確定重置</button>
+            <div className="flex gap-2 animate-fade-in">
+              <button onClick={() => setConfirmReset(false)} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 touch-target">取消</button>
+              <button onClick={() => { onResetData(); setConfirmReset(false); }} className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-black shadow-sm hover:bg-rose-700 touch-target">確定重置</button>
             </div>
           ) : (
-            <button onClick={() => setConfirmReset(true)} className="px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 transition-colors">重置資料</button>
+            <button onClick={() => setConfirmReset(true)} className="px-3 py-1.5 bg-white border border-rose-200 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-50 transition-colors touch-target">重置資料</button>
           )}
         </div>
       </div>
