@@ -42,8 +42,9 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
 
     // 計算各信用卡在週期內的已核銷金額
     // 邏輯：帳務月份 YYYY-MM，需要根據每張卡的結帳日和 isNextMonth 決定應抓取哪個月份的對帳資料
-    // - 當月結帳 (isNextMonth=false)：選擇1月時，顯示結帳日在1月的帳單
-    // - 次月結帳 (isNextMonth=true)：選擇1月時，顯示結帳日在1月的帳單（但這是上月消費週期的帳單）
+    // - 當月結帳 (isNextMonth=false)：選擇1月時，1月帳單 = 1月結帳日的帳單（涵蓋12月~1月消費）
+    // - 次月結帳 (isNextMonth=true)：選擇1月時，1月帳單 = 2月結帳日的帳單（涵蓋1月~2月消費）
+    //   因為國泰(次月3日)的「1月帳單」是在2月3日結帳，涵蓋1月消費
     const cardTotals = useMemo(() => {
         const result: Record<string, number> = {};
         const banks = cardBanks.filter(b => b !== '-' && b !== '其他');
@@ -56,15 +57,25 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
             const statementDay = setting?.statementDay || 0;
             const isNextMonth = setting?.isNextMonth || false;
 
-            // 對於所有卡片，我們想要知道「在選擇的月份中，結帳日那天的帳單金額」
-            // 這個帳單的週期是：上月 statementDay+1 ~ 本月 statementDay
-            // 不需要調整月份，因為我們直接計算 selectedMonth 的 statementDay 結帳日
+            // 決定目標月份
+            // - 當月結帳：直接使用 selectedMonth
+            // - 次月結帳：使用 selectedMonth + 1（因為「N月帳單」是在 N+1 月結帳）
+            let targetYear = baseYear;
+            let targetMonth = baseMonth;
 
-            // 使用與對帳頁面相同的週期計算邏輯
+            if (isNextMonth) {
+                targetMonth = baseMonth + 1;
+                if (targetMonth > 12) {
+                    targetMonth = 1;
+                    targetYear = baseYear + 1;
+                }
+            }
+
+            // 使用週期計算邏輯
             // 週期範圍：上月 statementDay+1 日 到 本月 statementDay 日
             if (statementDay > 0) {
-                const endDate = new Date(baseYear, baseMonth - 1, statementDay);
-                const startDate = new Date(baseYear, baseMonth - 2, statementDay + 1);
+                const endDate = new Date(targetYear, targetMonth - 1, statementDay);
+                const startDate = new Date(targetYear, targetMonth - 2, statementDay + 1);
 
                 const start = startDate.toISOString().split('T')[0];
                 const end = endDate.toISOString().split('T')[0];
