@@ -94,7 +94,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
 
         return cards.map(bank => {
             const allBankTxs = transactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === bank);
-            const statementDay = cardSettings[bank]?.statementDay || 0;
+            const setting = cardSettings[bank];
+            const statementDay = setting?.statementDay || 0;
 
             // 計算未出帳：只計算「當月」或「前一個月」交易日期的未核銷金額（預估本期卡費）
             const unbilled = allBankTxs.filter(t => {
@@ -105,27 +106,12 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                 return isCurrentMonth || isPrevMonth;
             }).reduce((sum, t) => sum + t.amount, 0);
 
-            // 計算已核帳：使用與 BudgetManager/Reconciliation 相同的週期邏輯
+            // 計算已核帳：直接使用 selectedMonth 的結帳週期
+            // 不論是當月結帳或次月結帳，都直接計算「結帳日在選擇月份中」的帳單金額
             let billedRecent = 0;
 
             if (statementDay > 0) {
-                // 決定應該抓取哪個月份的對帳資料
-                // 結帳日 > 15：次月結帳，需要抓取 selectedMonth + 1 月的對帳資料
-                // 結帳日 <= 15：當月結帳，直接抓取 selectedMonth 的對帳資料
-                let targetYear = baseYear;
-                let targetMonth = baseMonth;
-
-                if (statementDay > 15) {
-                    targetMonth = baseMonth + 1;
-                    if (targetMonth > 12) {
-                        targetMonth = 1;
-                        targetYear = baseYear + 1;
-                    }
-                }
-
-                // 使用週期計算邏輯
-                const targetYearMonth = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
-                const range = getCycleRange(bank, targetYearMonth);
+                const range = getCycleRange(bank, selectedMonth);
 
                 if (range) {
                     billedRecent = allBankTxs

@@ -54,11 +54,20 @@ const Settings: React.FC<SettingsProps> = ({
   const handleUpdateStatementDay = (bank: string, day: string) => {
     const dayVal = parseInt(day);
     if (!isNaN(dayVal)) {
+      const existing = cardSettings[bank] || {};
       onUpdateCardSettings({
         ...cardSettings,
-        [bank]: { statementDay: dayVal }
+        [bank]: { ...existing, statementDay: dayVal }
       });
     }
+  };
+
+  const handleToggleNextMonth = (bank: string) => {
+    const existing = cardSettings[bank] || { statementDay: 0 };
+    onUpdateCardSettings({
+      ...cardSettings,
+      [bank]: { ...existing, isNextMonth: !existing.isNextMonth }
+    });
   };
 
   const handleSaveBudget = () => {
@@ -130,27 +139,45 @@ const Settings: React.FC<SettingsProps> = ({
         <p className="text-xs text-gray-500 mb-6">設定每張卡的每月結帳日，系統將自動區分「本期預估應繳」與「未來分期金額」。</p>
 
         <div className="space-y-4">
-          {cardBanks.filter(b => b !== '-' && b !== '其他').map(bank => (
-            <div key={bank} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
-              <div className="flex flex-col">
-                <span className="font-bold text-gray-700">{bank} 信用卡</span>
-                <span className="text-[10px] text-gray-400">目前設定: 每月 {cardSettings[bank]?.statementDay || '--'} 日結帳</span>
+          {cardBanks.filter(b => b !== '-' && b !== '其他').map(bank => {
+            const setting = cardSettings[bank];
+            const isNextMonth = setting?.isNextMonth || false;
+            const statementDay = setting?.statementDay || 0;
+            return (
+              <div key={bank} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="flex flex-col">
+                  <span className="font-bold text-gray-700">{bank} 信用卡</span>
+                  <span className="text-[10px] text-gray-400">
+                    目前設定: {isNextMonth ? '次月' : '當月'} {statementDay || '--'} 日結帳
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isNextMonth}
+                      onChange={() => handleToggleNextMonth(bank)}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-xs text-gray-500">次月結帳</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500">結帳日:</label>
+                    <select
+                      value={statementDay || ""}
+                      onChange={(e) => handleUpdateStatementDay(bank, e.target.value)}
+                      className="p-2 border border-gray-300 rounded-lg text-sm bg-white font-bold text-blue-600 focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">未設定</option>
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                        <option key={day} value={day}>{day} 日</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500">結帳日:</label>
-                <select
-                  value={cardSettings[bank]?.statementDay || ""}
-                  onChange={(e) => handleUpdateStatementDay(bank, e.target.value)}
-                  className="p-2 border border-gray-300 rounded-lg text-sm bg-white font-bold text-blue-600 focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">未設定</option>
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-                    <option key={day} value={day}>{day} 日</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="mt-6 flex gap-2">

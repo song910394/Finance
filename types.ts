@@ -21,6 +21,7 @@ export const DEFAULT_CATEGORIES = [
 
 export interface CardSetting {
   statementDay: number; // 1-31
+  isNextMonth?: boolean; // true = 次月結帳 (如國泰次月3日), false = 當月結帳 (如玉山當月15日)
   issuedMonths?: string[]; // 紀錄已核結出帳的月份 (格式: YYYY-MM)
 }
 

@@ -41,9 +41,9 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
     }, [budgets, selectedMonth, incomeSources]);
 
     // 計算各信用卡在週期內的已核銷金額
-    // 邏輯：帳務月份 YYYY-MM，需要根據每張卡的結帳日決定應抓取哪個月份的對帳資料
-    // - 結帳日 >= 16（當月結帳）：抓取 selectedMonth 的對帳資料
-    // - 結帳日 <= 15（次月結帳）：抓取 selectedMonth + 1 月的對帳資料
+    // 邏輯：帳務月份 YYYY-MM，需要根據每張卡的結帳日和 isNextMonth 決定應抓取哪個月份的對帳資料
+    // - 當月結帳 (isNextMonth=false)：選擇1月時，顯示結帳日在1月的帳單
+    // - 次月結帳 (isNextMonth=true)：選擇1月時，顯示結帳日在1月的帳單（但這是上月消費週期的帳單）
     const cardTotals = useMemo(() => {
         const result: Record<string, number> = {};
         const banks = cardBanks.filter(b => b !== '-' && b !== '其他');
@@ -52,29 +52,19 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
         const [baseYear, baseMonth] = selectedMonth.split('-').map(Number);
 
         banks.forEach(bank => {
-            const statementDay = cardSettings[bank]?.statementDay || 0;
+            const setting = cardSettings[bank];
+            const statementDay = setting?.statementDay || 0;
+            const isNextMonth = setting?.isNextMonth || false;
 
-            // 決定應該抓取哪個月份的對帳資料
-            let targetYear = baseYear;
-            let targetMonth = baseMonth;
-
-            if (statementDay > 15) {
-                // 次月結帳的卡（結帳日 > 15，如遠傳28日），需要抓取 selectedMonth + 1 月的對帳資料
-                // 因為如果選擇1月，這些卡的帳單會在2月初寄出
-                targetMonth = baseMonth + 1;
-                if (targetMonth > 12) {
-                    targetMonth = 1;
-                    targetYear = baseYear + 1;
-                }
-            }
-            // 結帳日 <= 15 的卡（如國泰3日、富邦2日、玉山15日）是當月結帳
-            // 選擇1月時，直接抓取1月的對帳資料
+            // 對於所有卡片，我們想要知道「在選擇的月份中，結帳日那天的帳單金額」
+            // 這個帳單的週期是：上月 statementDay+1 ~ 本月 statementDay
+            // 不需要調整月份，因為我們直接計算 selectedMonth 的 statementDay 結帳日
 
             // 使用與對帳頁面相同的週期計算邏輯
             // 週期範圍：上月 statementDay+1 日 到 本月 statementDay 日
             if (statementDay > 0) {
-                const endDate = new Date(targetYear, targetMonth - 1, statementDay);
-                const startDate = new Date(targetYear, targetMonth - 2, statementDay + 1);
+                const endDate = new Date(baseYear, baseMonth - 1, statementDay);
+                const startDate = new Date(baseYear, baseMonth - 2, statementDay + 1);
 
                 const start = startDate.toISOString().split('T')[0];
                 const end = endDate.toISOString().split('T')[0];
@@ -320,13 +310,15 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                         {/* 信用卡 - 自動帶入 */}
                         {cardBanks.filter(b => b !== '-' && b !== '其他').map(bank => {
                             const total = cardTotals[bank] || 0;
-                            const statementDay = cardSettings[bank]?.statementDay;
+                            const setting = cardSettings[bank];
+                            const statementDay = setting?.statementDay;
+                            const isNextMonth = setting?.isNextMonth;
                             return (
                                 <div key={bank} className="flex items-center gap-3 p-3 bg-indigo-50/30 rounded-xl border border-indigo-100/50 hover:bg-indigo-50/50 transition-colors">
                                     <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><CreditCard size={14} /></div>
                                     <div className="flex-1">
                                         <span className="text-sm font-bold text-slate-700">{bank}</span>
-                                        {statementDay && <span className="text-[10px] text-slate-400 ml-2">{statementDay > 15 ? '次月' : ''}{statementDay} 日</span>}
+                                        {statementDay && <span className="text-[10px] text-slate-400 ml-2">{isNextMonth ? '次月' : ''}{statementDay} 日</span>}
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <span className={`px-2 py-1 text-[10px] font-bold rounded ${total > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
