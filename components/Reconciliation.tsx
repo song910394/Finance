@@ -46,8 +46,24 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
         if (!setting || !setting.statementDay) return null;
 
         const [year, month] = yearMonth.split('-').map(Number);
-        const endDate = new Date(year, month - 1, setting.statementDay);
-        const startDate = new Date(year, month - 2, setting.statementDay + 1);
+
+        // Determine the actual cycle end date based on the "Billing Month" logic
+        // Rule: Statement Day 1-14 -> Counts as Previous Month's Bill (So for selected month M, we want cycle ending in M+1)
+        //       Statement Day 15-31 -> Counts as Current Month's Bill (So for selected month M, we want cycle ending in M)
+
+        let targetYear = year;
+        let targetMonth = month;
+
+        if (setting.statementDay < 15) {
+            targetMonth = month + 1;
+            if (targetMonth > 12) {
+                targetMonth = 1;
+                targetYear = year + 1;
+            }
+        }
+
+        const endDate = new Date(targetYear, targetMonth - 1, setting.statementDay);
+        const startDate = new Date(targetYear, targetMonth - 2, setting.statementDay + 1);
 
         return {
             start: startDate.toISOString().split('T')[0],

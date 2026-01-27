@@ -63,13 +63,36 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
         const cards = cardBanks.filter(c => c !== CardBank.NONE && c !== '-');
 
         // Helper function to get cycle range based on statement day
+        // Rule: Statement Day 1-14 -> Counts as Previous Month's Bill (So for selected month M, we want cycle ending in M+1)
+        //       Statement Day 15-31 -> Counts as Current Month's Bill (So for selected month M, we want cycle ending in M)
         const getCycleRange = (bank: string, yearMonth: string) => {
             const setting = cardSettings[bank];
             if (!setting || !setting.statementDay) return null;
 
             const [year, month] = yearMonth.split('-').map(Number);
-            const endDate = new Date(year, month - 1, setting.statementDay);
-            const startDate = new Date(year, month - 2, setting.statementDay + 1);
+
+            // Determine the actual cycle end date based on the "Billing Month" logic
+            // If statement day is small (e.g. 3), it belongs to the previous month's bill.
+            // So if we are viewing "December Bill" (yearMonth = 12), and day is 3,
+            // it means the cycle ends in January (12+1).
+            // If day is 23, it ends in December (12).
+
+            let targetYear = year;
+            let targetMonth = month;
+
+            // Check if this card follows "Next Month" logic (Day < 15)
+            // We use 15 as the cutoff based on user requirement "1-14算上月, 15-31算當月"
+            // This implies: For "Billing Month M", if Day < 15, the statement date is in M+1.
+            if (setting.statementDay < 15) {
+                targetMonth = month + 1;
+                if (targetMonth > 12) {
+                    targetMonth = 1;
+                    targetYear = year + 1;
+                }
+            }
+
+            const endDate = new Date(targetYear, targetMonth - 1, setting.statementDay);
+            const startDate = new Date(targetYear, targetMonth - 2, setting.statementDay + 1);
 
             return {
                 start: startDate.toISOString().split('T')[0],
@@ -98,41 +121,27 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
             const statementDay = setting?.statementDay || 0;
             const isNextMonth = setting?.isNextMonth || false;
 
-            // 計算未出帳：只計算「當月」或「前一個月」交易日期的未核銷金額（預估本期卡費）
+            // 計算未出帳：計算截止至本期帳單結帳日的所有「未核銷」金額
+            // 這包含了本期新增的消費，以及過往所有尚未核銷的消費（自動滾入）
+            const range = getCycleRange(bank, selectedMonth);
+
             const unbilled = allBankTxs.filter(t => {
                 if (t.isReconciled) return false;
-                // 只計算當月或前一個月的交易
-                const isCurrentMonth = t.date >= currentMonthStart && t.date <= currentMonthEnd;
-                const isPrevMonth = t.date >= prevMonthStart && t.date <= prevMonthEnd;
-                return isCurrentMonth || isPrevMonth;
+                if (!range) return true; // 若無設定，顯示所有未核銷
+                return t.date <= range.end;
             }).reduce((sum, t) => sum + t.amount, 0);
 
-            // 計算已核帳：根據 isNextMonth 決定目標月份
-            // - 當月結帳：直接使用 selectedMonth
-            // - 次月結帳：使用 selectedMonth + 1
+            // 計算已核帳：本期週期內的已核銷金額
             let billedRecent = 0;
 
             if (statementDay > 0) {
-                let targetYear = baseYear;
-                let targetMonth = baseMonth;
-
-                if (isNextMonth) {
-                    targetMonth = baseMonth + 1;
-                    if (targetMonth > 12) {
-                        targetMonth = 1;
-                        targetYear = baseYear + 1;
-                    }
-                }
-
-                const targetYearMonth = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
-
                 // Priority 1: Use saved statement amount if available
-                const savedAmount = setting?.statementAmounts?.[targetYearMonth];
+                // Note: savedAmount is keyed by "Billing Month" (selectedMonth)
+                const savedAmount = setting?.statementAmounts?.[selectedMonth];
                 if (savedAmount !== undefined) {
                     billedRecent = savedAmount;
                 } else {
                     // Priority 2: Calculate from reconciled transactions
-                    const range = getCycleRange(bank, targetYearMonth);
                     if (range) {
                         billedRecent = allBankTxs
                             .filter(t => t.isReconciled && t.date >= range.start && t.date <= range.end)
