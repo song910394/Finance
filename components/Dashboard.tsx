@@ -125,12 +125,19 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                 }
 
                 const targetYearMonth = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
-                const range = getCycleRange(bank, targetYearMonth);
 
-                if (range) {
-                    billedRecent = allBankTxs
-                        .filter(t => t.isReconciled && t.date >= range.start && t.date <= range.end)
-                        .reduce((sum, t) => sum + t.amount, 0);
+                // Priority 1: Use saved statement amount if available
+                const savedAmount = setting?.statementAmounts?.[targetYearMonth];
+                if (savedAmount !== undefined) {
+                    billedRecent = savedAmount;
+                } else {
+                    // Priority 2: Calculate from reconciled transactions
+                    const range = getCycleRange(bank, targetYearMonth);
+                    if (range) {
+                        billedRecent = allBankTxs
+                            .filter(t => t.isReconciled && t.date >= range.start && t.date <= range.end)
+                            .reduce((sum, t) => sum + t.amount, 0);
+                    }
                 }
             } else {
                 // 如果沒有設定結帳日，fallback 到原本邏輯（只顯示當月已核銷）
