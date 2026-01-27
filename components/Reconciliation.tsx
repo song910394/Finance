@@ -104,7 +104,7 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
         const range = getCycleRange(selectedBank, selectedStatementMonth);
 
         return transactions.filter(t => {
-            if (t.paymentMethod !== PaymentMethod.CREDIT_CARD || t.cardBank !== selectedBank || t.isReconciled) return false;
+            if (t.cardBank !== selectedBank || t.isReconciled) return false;
             if (!range) return true; // If no setting, show all unreconciled
 
             // Changed Logic: Instead of strictly >= start && <= end, 
@@ -126,17 +126,23 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
     // Let's keep strict range for "Reconciled" stat to denote "This month's cleared items".
     const reconciledTotalInCycle = useMemo(() => {
         if (selectedBank === '-') return 0;
+
+        // Priority 1: Use saved statement amount if available
+        const setting = cardSettings[selectedBank];
+        const savedAmount = setting?.statementAmounts?.[selectedStatementMonth];
+        if (savedAmount !== undefined) return savedAmount;
+
+        // Priority 2: Calculate from reconciled transactions (Strict cycle range)
         const range = getCycleRange(selectedBank, selectedStatementMonth);
         if (!range) return 0;
         return transactions
-            .filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === selectedBank && t.isReconciled && t.date >= range.start && t.date <= range.end)
+            .filter(t => t.cardBank === selectedBank && t.isReconciled && t.date >= range.start && t.date <= range.end)
             .reduce((s, t) => s + t.amount, 0);
     }, [transactions, selectedBank, selectedStatementMonth, cardSettings]);
 
-
     const cardSummary = useMemo(() => {
         return cardBanks.filter(c => c !== '-').map(bank => {
-            const txs = transactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === bank);
+            const txs = transactions.filter(t => t.cardBank === bank);
 
             // Unbilled: All time unreconciled (simplest view for card summary card)
             const unbilled = txs.filter(t => !t.isReconciled).reduce((s, t) => s + t.amount, 0);

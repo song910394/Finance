@@ -93,7 +93,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
         const prevMonthEnd = new Date(prevYear, prevMonth, 0).toISOString().split('T')[0]; // 前月最後一天
 
         return cards.map(bank => {
-            const allBankTxs = transactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === bank);
+            const allBankTxs = transactions.filter(t => t.cardBank === bank);
             const setting = cardSettings[bank];
             const statementDay = setting?.statementDay || 0;
             const isNextMonth = setting?.isNextMonth || false;
@@ -141,7 +141,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                 }
             } else {
                 // 如果沒有設定結帳日，fallback 到原本邏輯（只顯示當月已核銷）
-                const txs = statsTransactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === bank);
+                const txs = statsTransactions.filter(t => t.cardBank === bank);
                 billedRecent = txs.filter(t => t.isReconciled).reduce((sum, t) => sum + t.amount, 0);
             }
 
