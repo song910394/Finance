@@ -211,7 +211,7 @@ function App() {
                   syncStatus === 'error' ? '同步失敗' : '未連線'}
             </span>
           </div>
-          <p className="text-[10px] text-slate-400 mt-2 font-display">© 2024 H&S記帳</p>
+          <p className="text-[10px] text-slate-400 mt-2 font-display">© 2024 H&S記帳 v{__APP_VERSION__}</p>
         </div>
       </aside>
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
