@@ -144,7 +144,13 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                     // Priority 2: Calculate from reconciled transactions
                     if (range) {
                         billedRecent = allBankTxs
-                            .filter(t => t.isReconciled && t.date >= range.start && t.date <= range.end)
+                            .filter(t => {
+                                if (!t.isReconciled) return false;
+                                if (t.date > range.end) return false;
+                                if (t.date >= range.start) return true;
+                                if (t.reconciledDate && t.reconciledDate.split('T')[0] >= range.start) return true;
+                                return false;
+                            })
                             .reduce((sum, t) => sum + t.amount, 0);
                     }
                 }

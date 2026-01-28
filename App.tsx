@@ -146,7 +146,15 @@ function App() {
   };
 
   const toggleReconcile = (id: string) => {
-    setTransactions(prev => prev.map(t => t.id === id ? { ...t, isReconciled: !t.isReconciled } : t));
+    setTransactions(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      const newStatus = !t.isReconciled;
+      return {
+        ...t,
+        isReconciled: newStatus,
+        reconciledDate: newStatus ? new Date().toISOString() : undefined
+      };
+    }));
   };
 
   const resetData = () => {

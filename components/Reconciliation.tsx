@@ -152,7 +152,16 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
         const range = getCycleRange(selectedBank, selectedStatementMonth);
         if (!range) return 0;
         return transactions
-            .filter(t => t.cardBank === selectedBank && t.isReconciled && t.date >= range.start && t.date <= range.end)
+            .filter(t => {
+                if (t.cardBank !== selectedBank || !t.isReconciled) return false;
+                if (t.date > range.end) return false;
+
+                // Include if transaction date is in cycle OR reconciled date is in cycle
+                if (t.date >= range.start) return true;
+                if (t.reconciledDate && t.reconciledDate.split('T')[0] >= range.start) return true;
+
+                return false;
+            })
             .reduce((s, t) => s + t.amount, 0);
     }, [transactions, selectedBank, selectedStatementMonth, cardSettings]);
 
@@ -164,7 +173,15 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
             const unbilled = txs.filter(t => !t.isReconciled).reduce((s, t) => s + t.amount, 0);
 
             // Billed: Just this month's reconciled sum for quick view
-            const billed = txs.filter(t => t.isReconciled).reduce((s, t) => s + t.amount, 0);
+            const range = getCycleRange(bank, selectedStatementMonth);
+            const billed = txs.filter(t => {
+                if (!t.isReconciled) return false;
+                if (!range) return true;
+                if (t.date > range.end) return false;
+                if (t.date >= range.start) return true;
+                if (t.reconciledDate && t.reconciledDate.split('T')[0] >= range.start) return true;
+                return false;
+            }).reduce((s, t) => s + t.amount, 0);
 
             const issued = isMonthIssued(bank, selectedStatementMonth);
             return { bank, unbilled, billed, issued, totalCount: txs.length };
@@ -180,7 +197,14 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
             // Reconciled List: Show strict cycle range to keep the list relevant to "This Month's Statement"
             if (type === 'reconciled') {
                 if (!range) return t.isReconciled;
-                return t.isReconciled && t.date >= range.start && t.date <= range.end;
+                if (!t.isReconciled) return false;
+                if (t.date > range.end) return false;
+
+                // Include if transaction date is in cycle OR reconciled date is in cycle
+                if (t.date >= range.start) return true;
+                if (t.reconciledDate && t.reconciledDate.split('T')[0] >= range.start) return true;
+
+                return false;
             }
 
             if (t.isReconciled) return false;

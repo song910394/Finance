@@ -35,6 +35,7 @@ export interface Transaction {
   category: Category;
   description: string;
   isReconciled: boolean;
+  reconciledDate?: string; // ISO String
   isRecurring?: boolean;
   isInstallment?: boolean;
 }
