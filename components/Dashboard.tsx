@@ -186,7 +186,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
         const parseInstallment = (desc: string) => {
             // Try format: "name (N/M)" or "name(N/M)" or "name (分期N/M)" or "name (分期 N/M)"
             // Allows optional whitespace inside parentheses and optional "分期" prefix
-            let match = desc.match(/^(.+?)\s*\(\s*(?:分?期?:?\s*)?(\d+)\/(\d+)\s*\)$/);
+            // Supports both half-width () and full-width （） parentheses
+            let match = desc.match(/^(.+?)\s*[(\uff08]\s*(?:分?期?:?\s*)?(\d+)\/(\d+)\s*[)\uff09]$/);
             if (match) return { baseName: match[1].trim(), current: +match[2], total: +match[3] };
 
             // Try format: "name分期N/M" (no parentheses)
@@ -222,7 +223,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
 
         // Calculate progress for each installment item
         const items = Array.from(grouped.entries()).map(([name, data]) => {
-            const txs = data.transactions.sort((a, b) => a.date.localeCompare(b.date));
+            // Sort by date descending (latest first) to easily get the most recent installment info
+            const txs = data.transactions.sort((a, b) => b.date.localeCompare(a.date));
             const paidTxs = txs.filter(t => t.isReconciled);
             const totalPeriods = data.totalPeriods;
             const paidPeriods = paidTxs.length;
@@ -232,10 +234,19 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
             const remainingAmount = amountPerPeriod * remainingPeriods;
             const progress = totalPeriods > 0 ? Math.round((paidPeriods / totalPeriods) * 100) : 0;
 
-            // Calculate end date
-            const firstDate = new Date(txs[0]?.date || new Date());
-            const endDate = new Date(firstDate);
-            endDate.setMonth(endDate.getMonth() + totalPeriods - 1);
+            // Calculate end date based on the LATEST transaction
+            // If latest tx is "20/24" at 2026-01-21, then we have (24-20)=4 months left.
+            // End date = 2026-01 + 4 months = 2026-05.
+            const latestTx = txs[0];
+            const latestInfo = parseInstallment(latestTx.description);
+            const currentPeriod = latestInfo.current || 1; // Fallback to 1 if parsing fails (unlikely here)
+
+            const endDate = new Date(latestTx.date);
+            // Calculate months to add: Total - Current
+            // e.g. Total 24, Current 20 => Add 4 months to current date
+            const monthsRemainingFromCurrent = totalPeriods - currentPeriod;
+            endDate.setMonth(endDate.getMonth() + monthsRemainingFromCurrent);
+
             const endMonth = endDate.toISOString().slice(0, 7);
 
             return {
