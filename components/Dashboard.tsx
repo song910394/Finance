@@ -227,8 +227,18 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
             const txs = data.transactions.sort((a, b) => b.date.localeCompare(a.date));
             const paidTxs = txs.filter(t => t.isReconciled);
             const totalPeriods = data.totalPeriods;
-            const paidPeriods = paidTxs.length;
-            const remainingPeriods = totalPeriods - paidPeriods;
+
+            // Calculate paid periods robustly
+            // 1. Count actual records (paidTxs.length)
+            // 2. Check the "current" index of reconciled items (e.g. if we have "20/24", that implies 20 are paid)
+            // Use the maximum of these to handle cases where history is missing (e.g. started recording at period 10)
+            const maxCurrentPeriod = paidTxs.reduce((max, t) => {
+                const info = parseInstallment(t.description);
+                return Math.max(max, info.current);
+            }, 0);
+            const paidPeriods = Math.max(paidTxs.length, maxCurrentPeriod);
+
+            const remainingPeriods = Math.max(0, totalPeriods - paidPeriods);
             const amountPerPeriod = txs[0]?.amount || 0;
             const totalAmount = amountPerPeriod * totalPeriods;
             const remainingAmount = amountPerPeriod * remainingPeriods;
