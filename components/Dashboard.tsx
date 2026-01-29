@@ -184,12 +184,14 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
         // - "項目名稱 (分期N/M)" or "項目名稱(分期N/M)"
         // - "項目名稱分期N/M"
         const parseInstallment = (desc: string) => {
-            // Try format: "name (N/M)" or "name(N/M)" or "name (分期N/M)"
-            let match = desc.match(/^(.+?)\s*\(分?期?(\d+)\/(\d+)\)$/);
+            // Try format: "name (N/M)" or "name(N/M)" or "name (分期N/M)" or "name (分期 N/M)"
+            // Allows optional whitespace inside parentheses and optional "分期" prefix
+            let match = desc.match(/^(.+?)\s*\(\s*(?:分?期?:?\s*)?(\d+)\/(\d+)\s*\)$/);
             if (match) return { baseName: match[1].trim(), current: +match[2], total: +match[3] };
 
             // Try format: "name分期N/M" (no parentheses)
-            match = desc.match(/^(.+?)分期(\d+)\/(\d+)$/);
+            // Allow optional space before "分期"
+            match = desc.match(/^(.+?)\s*分期\s*(\d+)\/(\d+)$/);
             if (match) return { baseName: match[1].trim(), current: +match[2], total: +match[3] };
 
             // Try format: "nameN/M" (just numbers at end)
