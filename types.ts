@@ -38,6 +38,7 @@ export interface Transaction {
   reconciledDate?: string; // ISO String
   isRecurring?: boolean;
   isInstallment?: boolean;
+  recurringGroupId?: string; // 用於關聯同一組固定支出的交易
 }
 
 export interface CategorySummary {

@@ -145,6 +145,13 @@ function App() {
     setTransactions(prev => prev.filter(t => t.id !== id));
   };
 
+  // 刪除固定支出組：刪除指定 groupId 且日期 >= fromDate 的所有交易
+  const deleteRecurringGroup = (groupId: string, fromDate: string) => {
+    setTransactions(prev => prev.filter(t =>
+      !(t.recurringGroupId === groupId && t.date >= fromDate)
+    ));
+  };
+
   const toggleReconcile = (id: string) => {
     setTransactions(prev => prev.map(t => {
       if (t.id !== id) return t;
@@ -239,6 +246,7 @@ function App() {
                 onAddTransactions={addTransactions}
                 onEditTransaction={editTransaction}
                 onDeleteTransaction={deleteTransaction}
+                onDeleteRecurringGroup={deleteRecurringGroup}
                 onToggleReconcile={toggleReconcile}
               />
             )}

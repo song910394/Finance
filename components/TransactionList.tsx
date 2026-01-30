@@ -13,13 +13,27 @@ interface TransactionListProps {
     onAddTransactions: (ts: Omit<Transaction, 'id'>[], newCategories?: string[], newBanks?: string[]) => void;
     onEditTransaction: (id: string, t: Omit<Transaction, 'id'>) => void;
     onDeleteTransaction: (id: string) => void;
+    onDeleteRecurringGroup: (groupId: string, fromDate: string) => void;
     onToggleReconcile: (id: string) => void;
 }
+
+// 輔助函數：計算調整後的日期，避免月份溢出
+const getAdjustedDate = (baseDate: Date, monthOffset: number): Date => {
+    const targetDay = baseDate.getDate();
+    const result = new Date(baseDate);
+    result.setMonth(result.getMonth() + monthOffset);
+
+    // 如果日期溢出到下個月（例如 1/31 + 1 month = 3/3），調整回該月最後一天
+    if (result.getDate() !== targetDay) {
+        result.setDate(0); // 設為上個月的最後一天
+    }
+    return result;
+};
 
 const ITEMS_PER_PAGE = 20;
 
 const TransactionList: React.FC<TransactionListProps> = ({
-    transactions, categories, cardBanks, onAddTransaction, onAddTransactions, onEditTransaction, onDeleteTransaction, onToggleReconcile
+    transactions, categories, cardBanks, onAddTransaction, onAddTransactions, onEditTransaction, onDeleteTransaction, onDeleteRecurringGroup, onToggleReconcile
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState<'month' | 'year' | 'all'>('month');
@@ -42,6 +56,9 @@ const TransactionList: React.FC<TransactionListProps> = ({
     const [installments, setInstallments] = useState<string>('3');
     const [isRecurring, setIsRecurring] = useState(false);
     const [isInstallment, setIsInstallment] = useState(false);
+
+    // 刪除固定支出確認對話框
+    const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; transaction: Transaction | null }>({ show: false, transaction: null });
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -144,9 +161,17 @@ const TransactionList: React.FC<TransactionListProps> = ({
         if (editingId) {
             onEditTransaction(editingId, { ...baseTx, date, amount: totalAmount, description });
         } else if (useRecurring) {
+            const recurringGroupId = `recurring_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const baseDate = new Date(date);
             onAddTransactions(Array.from({ length: 12 }).map((_, i) => {
-                const d = new Date(date); d.setMonth(d.getMonth() + i);
-                return { ...baseTx, date: d.toISOString().split('T')[0], amount: totalAmount, description: i === 0 ? description : `${description} (固定支出)` };
+                const d = getAdjustedDate(baseDate, i);
+                return {
+                    ...baseTx,
+                    date: d.toISOString().split('T')[0],
+                    amount: totalAmount,
+                    description: i === 0 ? description : `${description} (固定支出)`,
+                    recurringGroupId
+                };
             }));
         } else if (useInstallment) {
             const count = parseInt(installments) || 1;
@@ -198,6 +223,31 @@ const TransactionList: React.FC<TransactionListProps> = ({
         setIsRecurring(!!t.isRecurring);
         setIsInstallment(!!t.isInstallment);
         setIsAdding(true);
+    };
+
+    // 處理刪除，如果是固定支出則顯示確認對話框
+    const handleDelete = (t: Transaction) => {
+        if (t.isRecurring && t.recurringGroupId) {
+            setDeleteConfirm({ show: true, transaction: t });
+        } else {
+            onDeleteTransaction(t.id);
+        }
+    };
+
+    // 刪除單筆
+    const handleDeleteSingle = () => {
+        if (deleteConfirm.transaction) {
+            onDeleteTransaction(deleteConfirm.transaction.id);
+            setDeleteConfirm({ show: false, transaction: null });
+        }
+    };
+
+    // 刪除此筆及未來所有
+    const handleDeleteFuture = () => {
+        if (deleteConfirm.transaction && deleteConfirm.transaction.recurringGroupId) {
+            onDeleteRecurringGroup(deleteConfirm.transaction.recurringGroupId, deleteConfirm.transaction.date);
+            setDeleteConfirm({ show: false, transaction: null });
+        }
     };
 
     return (
@@ -398,7 +448,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                     <td className="p-4 whitespace-nowrap"><div className="flex items-center gap-2"><span className="font-black text-slate-800">${t.amount.toLocaleString()}</span>{t.isRecurring && <span className="p-1 bg-amber-50 text-amber-500 rounded-md border border-amber-100"><RefreshCcw size={10} /></span>}{t.isInstallment && <span className="p-1 bg-indigo-50 text-indigo-500 rounded-md border border-indigo-100"><SplitSquareVertical size={10} /></span>}</div></td>
                                     <td className="p-4"><div className="flex flex-col"><span className="text-sm font-bold text-slate-700">{t.description}</span><span className="text-[10px] text-slate-400 font-bold">{t.paymentMethod}</span></div></td>
                                     <td className="p-4 whitespace-nowrap">{t.paymentMethod === PaymentMethod.CREDIT_CARD && t.isReconciled ? (<span className="px-2 py-1 rounded-lg text-[10px] font-black text-white bg-emerald-500">已對帳</span>) : (<span className="text-slate-300">-</span>)}</td>
-                                    <td className="p-4 text-right whitespace-nowrap"><div className="flex justify-end gap-1"><button onClick={() => openEdit(t)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"><Pencil size={14} /></button><button onClick={() => onDeleteTransaction(t.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 size={14} /></button></div></td>
+                                    <td className="p-4 text-right whitespace-nowrap"><div className="flex justify-end gap-1"><button onClick={() => openEdit(t)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"><Pencil size={14} /></button><button onClick={() => handleDelete(t)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 size={14} /></button></div></td>
                                 </tr>
                             ))}
                             {currentTransactions.length === 0 && (
@@ -465,7 +515,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                     <span className="text-base font-black text-slate-800">${t.amount.toLocaleString()}</span>
                                     <div className="flex gap-1">
                                         <button onClick={() => openEdit(t)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"><Pencil size={14} /></button>
-                                        <button onClick={() => onDeleteTransaction(t.id)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md"><Trash2 size={14} /></button>
+                                        <button onClick={() => handleDelete(t)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md"><Trash2 size={14} /></button>
                                     </div>
                                 </div>
                             </div>
@@ -500,8 +550,43 @@ const TransactionList: React.FC<TransactionListProps> = ({
                     </div>
                 )}
             </div>
+
+            {/* 刪除固定支出確認對話框 */}
+            {deleteConfirm.show && deleteConfirm.transaction && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl">
+                        <h3 className="text-lg font-black text-slate-800 mb-2">刪除固定支出</h3>
+                        <p className="text-sm text-slate-600 mb-4">
+                            您正在刪除「{deleteConfirm.transaction.description.replace(' (固定支出)', '')}」。
+                            <br />
+                            請選擇刪除方式：
+                        </p>
+                        <div className="flex flex-col gap-2">
+                            <button
+                                onClick={handleDeleteSingle}
+                                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors"
+                            >
+                                僅刪除此筆
+                            </button>
+                            <button
+                                onClick={handleDeleteFuture}
+                                className="w-full py-2.5 px-4 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl transition-colors"
+                            >
+                                刪除此筆及未來所有
+                            </button>
+                            <button
+                                onClick={() => setDeleteConfirm({ show: false, transaction: null })}
+                                className="w-full py-2 px-4 text-slate-500 font-bold hover:text-slate-700 transition-colors"
+                            >
+                                取消
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
 export default TransactionList;
+
