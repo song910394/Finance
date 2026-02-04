@@ -88,7 +88,6 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
 
                         // 只計算在週期內的已核銷交易
                         if (t.date >= start && t.date <= end) return true;
-                        if (t.reconciledDate && t.reconciledDate.split('T')[0] >= start) return true;
                         return false;
                     })
                     .reduce((sum, t) => sum + t.amount, 0);
