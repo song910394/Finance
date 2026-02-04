@@ -36,81 +36,26 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
             month: selectedMonth,
             openingBalance: 0,
             incomes: incomeSources.map(s => ({ sourceId: s.id, amount: 0 })),
-            loan: 40000
+            loan: 40000,
+            creditCards: []
         };
     }, [budgets, selectedMonth, incomeSources]);
 
-    // 計算各信用卡在週期內的已核銷金額
-    // 邏輯：帳務月份 YYYY-MM，需要根據每張卡的結帳日和 isNextMonth 決定應抓取哪個月份的對帳資料
-    // - 當月結帳 (isNextMonth=false)：選擇1月時，1月帳單 = 1月結帳日的帳單（涵蓋12月~1月消費）
-    // - 次月結帳 (isNextMonth=true)：選擇1月時，1月帳單 = 2月結帳日的帳單（涵蓋1月~2月消費）
-    //   因為國泰(次月3日)的「1月帳單」是在2月3日結帳，涵蓋1月消費
-    const cardTotals = useMemo(() => {
-        const result: Record<string, number> = {};
-        const banks = cardBanks.filter(b => b !== '-' && b !== '其他');
-
-        // 取得選擇的月份資訊
-        const [baseYear, baseMonth] = selectedMonth.split('-').map(Number);
-
-        banks.forEach(bank => {
-            const setting = cardSettings[bank];
-            const statementDay = setting?.statementDay || 0;
-            const isNextMonth = setting?.isNextMonth || false;
-
-            // 決定目標月份
-            // - 當月結帳：直接使用 selectedMonth
-            // - 次月結帳：使用 selectedMonth + 1（因為「N月帳單」是在 N+1 月結帳）
-            let targetYear = baseYear;
-            let targetMonth = baseMonth;
-
-            if (isNextMonth) {
-                targetMonth = baseMonth + 1;
-                if (targetMonth > 12) {
-                    targetMonth = 1;
-                    targetYear = baseYear + 1;
-                }
-            }
-
-            // 使用週期計算邏輯
-            // 週期範圍：上月 statementDay+1 日 到 本月 statementDay 日
-            if (statementDay > 0) {
-                const endDate = new Date(targetYear, targetMonth - 1, statementDay);
-                const startDate = new Date(targetYear, targetMonth - 2, statementDay + 1);
-
-                const start = startDate.toISOString().split('T')[0];
-                const end = endDate.toISOString().split('T')[0];
-
-                const total = transactions
-                    .filter(t => {
-                        if (t.paymentMethod !== PaymentMethod.CREDIT_CARD) return false;
-                        if (t.cardBank !== bank) return false;
-                        if (!t.isReconciled) return false;
-
-                        // 只計算在週期內的已核銷交易
-                        if (t.date >= start && t.date <= end) return true;
-                        return false;
-                    })
-                    .reduce((sum, t) => sum + t.amount, 0);
-
-                result[bank] = total;
-            } else {
-                // 如果沒有設定結帳日，預設為 0
-                result[bank] = 0;
-            }
-        });
-
-        return result;
-    }, [transactions, cardBanks, cardSettings, selectedMonth]);
+    // 移除自動計算邏輯，改為手動輸入
+    // const cardTotals = ... (removed)
 
     // 計算統計
     const stats = useMemo(() => {
         const incomeTotal = currentBudget.incomes.reduce((sum, i) => sum + i.amount, 0);
-        const cardTotal = Object.values(cardTotals).reduce((sum: number, v: number) => sum + v, 0);
+
+        // 信用卡總額改為從手動輸入的 creditCards 計算
+        const cardTotal = (currentBudget.creditCards || []).reduce((sum, c) => sum + c.amount, 0);
+
         const expenseTotal = currentBudget.loan + cardTotal;
         const balance = currentBudget.openingBalance + incomeTotal - expenseTotal;
 
         return { incomeTotal, cardTotal, expenseTotal, balance };
-    }, [currentBudget, cardTotals]);
+    }, [currentBudget]);
 
     // 更新預算資料
     const updateBudget = (updates: Partial<MonthlyBudget>) => {
@@ -124,11 +69,20 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
         const newIncomes = currentBudget.incomes.map(i =>
             i.sourceId === sourceId ? { ...i, amount } : i
         );
-        // 如果找不到該來源，新增一筆
+        // 如果找不到該來源，新增一筆 (雖然通常不會發生，因為初始化時已建立)
         if (!newIncomes.find(i => i.sourceId === sourceId)) {
             newIncomes.push({ sourceId, amount });
         }
         updateBudget({ incomes: newIncomes });
+    };
+
+    const updateCreditCardAmount = (cardName: string, amount: number) => {
+        const currentCards = currentBudget.creditCards || [];
+        const newCards = currentCards.some(c => c.cardName === cardName)
+            ? currentCards.map(c => c.cardName === cardName ? { ...c, amount } : c)
+            : [...currentCards, { cardName, amount }];
+
+        updateBudget({ creditCards: newCards });
     };
 
     const addIncomeSource = () => {
@@ -323,26 +277,32 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                             </div>
                         </div>
 
-                        {/* 信用卡 - 自動帶入 */}
+                        {/* 信用卡 - 手動輸入 */}
                         {cardBanks.filter(b => b !== '-' && b !== '其他').map(bank => {
-                            const total = cardTotals[bank] || 0;
+                            // 從 currentBudget.creditCards 取得金額，若無則為 0
+                            const cardData = (currentBudget.creditCards || []).find(c => c.cardName === bank);
+                            const amount = cardData?.amount || 0;
+
                             const setting = cardSettings[bank];
                             const statementDay = setting?.statementDay;
                             const isNextMonth = setting?.isNextMonth;
+
                             return (
-                                <div key={bank} className="flex items-center gap-3 p-3 bg-indigo-50/30 rounded-xl border border-indigo-100/50 hover:bg-indigo-50/50 transition-colors">
+                                <div key={bank} className="flex items-center gap-3 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 hover:bg-indigo-50 transition-colors focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-200">
                                     <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl"><CreditCard size={16} /></div>
                                     <div className="flex-1">
                                         <span className="text-sm font-bold text-slate-700">{bank}</span>
                                         {statementDay && <span className="text-[10px] text-slate-400 ml-2">{isNextMonth ? '次月' : ''}{statementDay} 日</span>}
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <span className={`px-2 py-1 text-[10px] font-bold rounded ${total > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                                            自動
-                                        </span>
-                                        <span className="text-sm font-black text-indigo-600 w-20 text-right font-number">
-                                            ${total.toLocaleString()}
-                                        </span>
+                                        <span className="text-slate-400 text-sm">$</span>
+                                        <input
+                                            type="number"
+                                            value={amount || ''}
+                                            onChange={e => updateCreditCardAmount(bank, parseFloat(e.target.value) || 0)}
+                                            placeholder="0"
+                                            className="w-28 px-3 py-2 text-right text-sm font-bold text-indigo-600 bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-number"
+                                        />
                                     </div>
                                 </div>
                             );
