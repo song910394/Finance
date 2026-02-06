@@ -92,7 +92,7 @@ function App() {
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [transactions, categories, budget, cardBanks, cardSettings, incomeSources, budgets, googleScriptUrl]);
+  }, [transactions, categories, budget, cardBanks, cardSettings, incomeSources, budgets, salaryAdjustments, googleScriptUrl]);
 
   const handleAutoLoad = async (url: string) => {
     setSyncStatus('syncing');
