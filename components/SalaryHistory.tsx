@@ -154,43 +154,55 @@ const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustm
         <div className="space-y-6">
             {/* Statistics Section */}
             {statistics && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Card 1: Total Salary Growth */}
                     <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200">
-                        <div className="flex items-center gap-3 mb-2 opacity-80">
-                            <Activity size={20} />
-                            <h3 className="text-sm font-bold uppercase tracking-widest">總體薪資成長</h3>
+                        <div className="flex items-center gap-2 mb-2 opacity-80">
+                            <Activity size={18} />
+                            <h3 className="text-xs font-bold uppercase tracking-widest">總薪資成長率</h3>
                         </div>
                         <div className="flex items-end gap-2">
-                            <span className="text-4xl font-black">{statistics.salaryGrowthPercent.toFixed(1)}%</span>
-                            <span className="text-sm font-bold mb-1 opacity-80">
-                                ( +${statistics.salaryGrowth.toLocaleString()} )
-                            </span>
+                            <span className="text-3xl font-black">{statistics.salaryGrowthPercent.toFixed(1)}%</span>
                         </div>
-                        {statistics.cagr !== null && (
-                            <div className="mt-4 pt-4 border-t border-white/20 flex justify-between items-center">
-                                <span className="text-xs font-bold opacity-70">年均複合成長率 (CAGR)</span>
-                                <span className="text-lg font-black">{statistics.cagr.toFixed(1)}%</span>
-                            </div>
-                        )}
+                        <div className="mt-2 text-xs font-medium opacity-70">
+                            累積成長金額 +${statistics.salaryGrowth.toLocaleString()}
+                        </div>
                     </div>
 
+                    {/* Card 2: Annual Salary Growth (CAGR) */}
                     <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
                         <div className="absolute right-0 top-0 p-3 opacity-5">
-                            <Percent size={100} />
+                            <TrendingUp size={80} />
                         </div>
-                        <div className="flex items-center gap-3 mb-2 text-slate-400">
-                            <TrendingUp size={20} />
-                            <h3 className="text-sm font-bold uppercase tracking-widest">勞健保費漲幅</h3>
+                        <div className="flex items-center gap-2 mb-2 text-slate-400">
+                            <Calendar size={18} />
+                            <h3 className="text-xs font-bold uppercase tracking-widest">年度平均成長率</h3>
                         </div>
                         <div className="flex items-end gap-2 text-slate-800">
-                            <span className="text-4xl font-black">{statistics.insuranceGrowthPercent.toFixed(1)}%</span>
-                            <span className="text-sm font-bold mb-1 text-slate-400">
-                                ( +${statistics.insuranceGrowth.toLocaleString()} )
+                            <span className="text-3xl font-black">
+                                {statistics.cagr !== null ? `${statistics.cagr.toFixed(1)}%` : <span className="text-lg text-slate-400">未滿一年</span>}
                             </span>
                         </div>
-                        <p className="mt-4 text-xs font-bold text-slate-400">
-                            隨著薪資調整，勞健保負擔增加的比例
+                        <p className="mt-2 text-[10px] font-bold text-slate-400">
+                            年均複合成長率 (CAGR)
                         </p>
+                    </div>
+
+                    {/* Card 3: Insurance Growth */}
+                    <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
+                        <div className="absolute right-0 top-0 p-3 opacity-5">
+                            <Percent size={80} />
+                        </div>
+                        <div className="flex items-center gap-2 mb-2 text-slate-400">
+                            <TrendingDown size={18} />
+                            <h3 className="text-xs font-bold uppercase tracking-widest">勞健保費漲幅</h3>
+                        </div>
+                        <div className="flex items-end gap-2 text-slate-800">
+                            <span className="text-3xl font-black">{statistics.insuranceGrowthPercent.toFixed(1)}%</span>
+                        </div>
+                        <div className="mt-2 text-xs font-medium text-slate-400">
+                            增加金額 +${statistics.insuranceGrowth.toLocaleString()}
+                        </div>
                     </div>
                 </div>
             )}
