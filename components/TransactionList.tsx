@@ -15,7 +15,6 @@ interface TransactionListProps {
     onDeleteTransaction: (id: string) => void;
     onDeleteRecurringGroup: (groupId: string, fromDate: string) => void;
     onToggleReconcile: (id: string) => void;
-    onTogglePaid: (id: string) => void;
 }
 
 // 輔助函數：計算調整後的日期，避免月份溢出
@@ -34,7 +33,7 @@ const getAdjustedDate = (baseDate: Date, monthOffset: number): Date => {
 const ITEMS_PER_PAGE = 20;
 
 const TransactionList: React.FC<TransactionListProps> = ({
-    transactions, categories, cardBanks, onAddTransaction, onAddTransactions, onEditTransaction, onDeleteTransaction, onDeleteRecurringGroup, onToggleReconcile, onTogglePaid
+    transactions, categories, cardBanks, onAddTransaction, onAddTransactions, onEditTransaction, onDeleteTransaction, onDeleteRecurringGroup, onToggleReconcile
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState<'month' | 'year' | 'all'>('month');
@@ -435,7 +434,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                 <th className="p-4 whitespace-nowrap">卡別</th>
                                 <th className="p-4 whitespace-nowrap">分類</th>
                                 <th className="p-4 whitespace-nowrap">金額</th>
-                                <th className="p-4 whitespace-nowrap">繳款</th>
                                 <th className="p-4 min-w-[200px]">說明</th>
                                 <th className="p-4 whitespace-nowrap">對帳</th>
                                 <th className="p-4 text-right whitespace-nowrap">操作</th>
@@ -448,16 +446,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                     <td className="p-4 whitespace-nowrap"><span className="text-xs font-bold text-slate-600">{t.cardBank}</span></td>
                                     <td className="p-4 whitespace-nowrap"><span className="px-2.5 py-1 rounded-lg text-[10px] font-black text-white shadow-sm" style={{ backgroundColor: getCategoryColor(t.category) }}>{t.category}</span></td>
                                     <td className="p-4 whitespace-nowrap"><div className="flex items-center gap-2"><span className="font-black text-slate-800">${t.amount.toLocaleString()}</span>{t.isRecurring && <span className="p-1 bg-amber-50 text-amber-500 rounded-md border border-amber-100"><RefreshCcw size={10} /></span>}{t.isInstallment && <span className="p-1 bg-indigo-50 text-indigo-500 rounded-md border border-indigo-100"><SplitSquareVertical size={10} /></span>}</div></td>
-                                    <td className="p-4 whitespace-nowrap">
-                                        <div className="flex items-center justify-center w-6">
-                                            <input
-                                                type="checkbox"
-                                                checked={!!t.isPaid}
-                                                onChange={() => onTogglePaid(t.id)}
-                                                className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                            />
-                                        </div>
-                                    </td>
                                     <td className="p-4"><div className="flex flex-col"><span className="text-sm font-bold text-slate-700">{t.description}</span><span className="text-[10px] text-slate-400 font-bold">{t.paymentMethod}</span></div></td>
                                     <td className="p-4 whitespace-nowrap">{t.paymentMethod === PaymentMethod.CREDIT_CARD && t.isReconciled ? (<span className="px-2 py-1 rounded-lg text-[10px] font-black text-white bg-emerald-500">已對帳</span>) : (<span className="text-slate-300">-</span>)}</td>
                                     <td className="p-4 text-right whitespace-nowrap"><div className="flex justify-end gap-1"><button onClick={() => openEdit(t)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"><Pencil size={14} /></button><button onClick={() => handleDelete(t)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 size={14} /></button></div></td>
@@ -516,9 +504,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                         {t.paymentMethod === PaymentMethod.CREDIT_CARD && t.isReconciled && (
                                             <span className="text-[10px] font-black text-white bg-emerald-500 px-1.5 py-0.5 rounded">已對帳</span>
                                         )}
-                                        {t.isPaid && (
-                                            <span className="text-[10px] font-black text-white bg-blue-500 px-1.5 py-0.5 rounded">已繳款</span>
-                                        )}
                                     </div>
                                     <div className="flex items-center gap-1">
                                         <span className="text-sm font-bold text-slate-800 truncate">{t.description}</span>
@@ -528,17 +513,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
                                 </div>
                                 <div className="flex flex-col items-end gap-1.5 shrink-0">
                                     <span className="text-base font-black text-slate-800">${t.amount.toLocaleString()}</span>
-                                    <div className="flex items-center gap-2">
-                                        <label className="flex items-center gap-1 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={!!t.isPaid}
-                                                onChange={(e) => { e.stopPropagation(); onTogglePaid(t.id); }}
-                                                className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                            />
-                                            <span className="text-[10px] text-slate-500 font-bold">已繳</span>
-                                        </label>
-                                    </div>
                                     <div className="flex gap-1">
                                         <button onClick={() => openEdit(t)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"><Pencil size={14} /></button>
                                         <button onClick={() => handleDelete(t)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md"><Trash2 size={14} /></button>

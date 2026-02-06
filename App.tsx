@@ -178,9 +178,6 @@ function App() {
     setSalaryAdjustments(prev => prev.filter(t => t.id !== id));
   };
 
-  const togglePaid = (id: string) => {
-    setTransactions(prev => prev.map(t => t.id === id ? { ...t, isPaid: !t.isPaid } : t));
-  };
 
   const resetData = () => {
     setTransactions([]);
@@ -265,9 +262,7 @@ function App() {
                 onAddTransactions={addTransactions}
                 onEditTransaction={editTransaction}
                 onDeleteTransaction={deleteTransaction}
-                onDeleteRecurringGroup={deleteRecurringGroup}
                 onToggleReconcile={toggleReconcile}
-                onTogglePaid={togglePaid}
               />
             )}
             {activeTab === Tab.SALARY_HISTORY && (

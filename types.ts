@@ -35,7 +35,6 @@ export interface Transaction {
   category: Category;
   description: string;
   isReconciled: boolean;
-  isPaid?: boolean; // 已繳款
   reconciledDate?: string; // ISO String
   isRecurring?: boolean;
   isInstallment?: boolean;
@@ -95,6 +94,6 @@ export interface MonthlyBudget {
   openingBalance: number; // 期初餘額
   incomes: { sourceId: string; amount: number }[]; // 各入帳來源金額
   loan: number; // 貸款金額
-  creditCards?: { cardName: string; amount: number }[]; // 各信用卡帳單金額 (手動輸入)
+  creditCards?: { cardName: string; amount: number; isPaid?: boolean }[]; // 各信用卡帳單金額 (手動輸入)
 }
 

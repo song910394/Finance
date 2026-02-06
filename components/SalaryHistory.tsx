@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Calendar, ChevronRight } from 'lucide-react';
 import { SalaryAdjustment } from '../types';
 
@@ -11,7 +11,7 @@ interface SalaryHistoryProps {
 
 const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustment, onDeleteAdjustment }) => {
     const [isAdding, setIsAdding] = useState(false);
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [totalSalary, setTotalSalary] = useState('');
     const [adjustmentItem, setAdjustmentItem] = useState('');
     const [adjustmentAmount, setAdjustmentAmount] = useState('');
@@ -19,6 +19,21 @@ const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustm
     const [healthInsurance, setHealthInsurance] = useState('');
     const [mealCost, setMealCost] = useState('');
     const [welfareFund, setWelfareFund] = useState('');
+
+    // Pre-fill data when opening modal
+    useEffect(() => {
+        if (isAdding && adjustments.length > 0) {
+            // Find the latest adjustment
+            const sorted = [...adjustments].sort((a, b) => b.date.localeCompare(a.date));
+            const lastAdj = sorted[0];
+
+            // Pre-fill fields
+            setLaborInsurance(lastAdj.laborInsurance.toString());
+            setHealthInsurance(lastAdj.healthInsurance.toString());
+            setMealCost(lastAdj.mealCost.toString());
+            setWelfareFund(lastAdj.welfareFund.toString());
+        }
+    }, [isAdding, adjustments]);
 
     // Sort adjustments by date descending
     const sortedAdjustments = useMemo(() => {
@@ -47,7 +62,7 @@ const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustm
     };
 
     const resetForm = () => {
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(new Date().toISOString().slice(0, 7));
         setTotalSalary('');
         setAdjustmentItem('');
         setAdjustmentAmount('');
@@ -101,8 +116,8 @@ const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustm
                             <form onSubmit={handleSubmit} className="space-y-5">
                                 <div className="grid grid-cols-2 gap-5">
                                     <div className="space-y-1">
-                                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest">生效日期</label>
-                                        <input required type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none" />
+                                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest">生效日期 (年月)</label>
+                                        <input required type="month" value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none" />
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-xs font-black text-slate-400 uppercase tracking-widest">調整後總薪資</label>

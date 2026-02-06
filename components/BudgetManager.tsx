@@ -76,11 +76,16 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
         updateBudget({ incomes: newIncomes });
     };
 
-    const updateCreditCardAmount = (cardName: string, amount: number) => {
+    const updateCreditCardAmount = (cardName: string, amount: number, isPaid: boolean = false) => {
         const currentCards = currentBudget.creditCards || [];
-        const newCards = currentCards.some(c => c.cardName === cardName)
-            ? currentCards.map(c => c.cardName === cardName ? { ...c, amount } : c)
-            : [...currentCards, { cardName, amount }];
+        const existingCard = currentCards.find(c => c.cardName === cardName);
+
+        let newCards;
+        if (existingCard) {
+            newCards = currentCards.map(c => c.cardName === cardName ? { ...c, amount, isPaid: isPaid ?? c.isPaid } : c);
+        } else {
+            newCards = [...currentCards, { cardName, amount, isPaid }];
+        }
 
         updateBudget({ creditCards: newCards });
     };
@@ -282,6 +287,7 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                             // 從 currentBudget.creditCards 取得金額，若無則為 0
                             const cardData = (currentBudget.creditCards || []).find(c => c.cardName === bank);
                             const amount = cardData?.amount || 0;
+                            const isPaid = !!cardData?.isPaid;
 
                             const setting = cardSettings[bank];
                             const statementDay = setting?.statementDay;
@@ -299,10 +305,20 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
                                         <input
                                             type="number"
                                             value={amount || ''}
-                                            onChange={e => updateCreditCardAmount(bank, parseFloat(e.target.value) || 0)}
+                                            onChange={e => updateCreditCardAmount(bank, parseFloat(e.target.value) || 0, isPaid)}
                                             placeholder="0"
                                             className="w-28 px-3 py-2 text-right text-sm font-bold text-indigo-600 bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-number"
                                         />
+                                        <div className="relative">
+                                            <input
+                                                type="checkbox"
+                                                checked={isPaid}
+                                                onChange={e => updateCreditCardAmount(bank, amount, e.target.checked)}
+                                                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                title="標記為已繳費"
+                                            />
+                                            {isPaid && <span className="absolute -top-1 -right-1 block w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span>}
+                                        </div>
                                     </div>
                                 </div>
                             );
