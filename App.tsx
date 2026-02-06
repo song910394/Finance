@@ -6,13 +6,15 @@ import Dashboard from './components/Dashboard';
 import Reconciliation from './components/Reconciliation';
 import Settings from './components/Settings';
 import BudgetManager from './components/BudgetManager';
-import { Transaction, DEFAULT_CATEGORIES, CardBank, CardSetting, IncomeSource, MonthlyBudget } from './types';
+import SalaryHistory from './components/SalaryHistory';
+import { Transaction, DEFAULT_CATEGORIES, CardBank, CardSetting, IncomeSource, MonthlyBudget, SalaryAdjustment } from './types';
 import { INITIAL_TRANSACTIONS, GOOGLE_SCRIPT_URL } from './constants';
 import { saveToGoogleSheet, loadFromGoogleSheet } from './services/googleSheetService';
 
 enum Tab {
   DASHBOARD = '概覽',
   TRANSACTIONS = '記帳',
+  SALARY_HISTORY = '薪資歷程',
   BUDGET = '帳務',
   RECONCILIATION = '對帳',
   SETTINGS = '設定'
@@ -35,6 +37,7 @@ function App() {
     { id: '4', name: '哩婆給' },
   ]);
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
+  const [salaryAdjustments, setSalaryAdjustments] = useState<SalaryAdjustment[]>([]);
 
   const [googleScriptUrl, setGoogleScriptUrl] = useState(GOOGLE_SCRIPT_URL);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
@@ -77,7 +80,8 @@ function App() {
           cardBanks,
           cardSettings,
           incomeSources,
-          budgets
+          budgets,
+          salaryAdjustments
         });
         setSyncStatus('saved');
         setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -103,6 +107,7 @@ function App() {
         if (data.cardSettings) setCardSettings(data.cardSettings);
         if (data.incomeSources) setIncomeSources(data.incomeSources);
         if (data.budgets) setBudgets(data.budgets);
+        if (data.salaryAdjustments) setSalaryAdjustments(data.salaryAdjustments);
 
         setSyncStatus('saved');
         setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -164,6 +169,19 @@ function App() {
     }));
   };
 
+  const addSalaryAdjustment = (adjustment: Omit<SalaryAdjustment, 'id'>) => {
+    const newAdj = { ...adjustment, id: Math.random().toString(36).substr(2, 9) };
+    setSalaryAdjustments(prev => [...prev, newAdj]);
+  };
+
+  const deleteSalaryAdjustment = (id: string) => {
+    setSalaryAdjustments(prev => prev.filter(t => t.id !== id));
+  };
+
+  const togglePaid = (id: string) => {
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, isPaid: !t.isPaid } : t));
+  };
+
   const resetData = () => {
     setTransactions([]);
     setCategories(DEFAULT_CATEGORIES);
@@ -203,8 +221,9 @@ function App() {
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <NavItem icon={<LayoutDashboard size={20} />} label={Tab.DASHBOARD} isActive={activeTab === Tab.DASHBOARD} onClick={() => setActiveTab(Tab.DASHBOARD)} />
           <NavItem icon={<List size={20} />} label={Tab.TRANSACTIONS} isActive={activeTab === Tab.TRANSACTIONS} onClick={() => setActiveTab(Tab.TRANSACTIONS)} />
+          <NavItem icon={<Wallet size={20} />} label={Tab.SALARY_HISTORY} isActive={activeTab === Tab.SALARY_HISTORY} onClick={() => setActiveTab(Tab.SALARY_HISTORY)} />
           <NavItem icon={<CreditCard size={20} />} label={Tab.RECONCILIATION} isActive={activeTab === Tab.RECONCILIATION} onClick={() => setActiveTab(Tab.RECONCILIATION)} />
-          <NavItem icon={<Wallet size={20} />} label={Tab.BUDGET} isActive={activeTab === Tab.BUDGET} onClick={() => setActiveTab(Tab.BUDGET)} />
+          <NavItem icon={<PieChart size={20} />} label={Tab.BUDGET} isActive={activeTab === Tab.BUDGET} onClick={() => setActiveTab(Tab.BUDGET)} />
           <div className="pt-4 mt-4 border-t border-gray-50">
             <NavItem icon={<SettingsIcon size={20} />} label={Tab.SETTINGS} isActive={activeTab === Tab.SETTINGS} onClick={() => setActiveTab(Tab.SETTINGS)} />
           </div>
@@ -248,6 +267,14 @@ function App() {
                 onDeleteTransaction={deleteTransaction}
                 onDeleteRecurringGroup={deleteRecurringGroup}
                 onToggleReconcile={toggleReconcile}
+                onTogglePaid={togglePaid}
+              />
+            )}
+            {activeTab === Tab.SALARY_HISTORY && (
+              <SalaryHistory
+                adjustments={salaryAdjustments}
+                onAddAdjustment={addSalaryAdjustment}
+                onDeleteAdjustment={deleteSalaryAdjustment}
               />
             )}
             {activeTab === Tab.RECONCILIATION && (
@@ -291,8 +318,9 @@ function App() {
           <div className="grid grid-cols-5 h-16">
             <MobileNavItem icon={<LayoutDashboard size={20} />} label={Tab.DASHBOARD} isActive={activeTab === Tab.DASHBOARD} onClick={() => setActiveTab(Tab.DASHBOARD)} />
             <MobileNavItem icon={<List size={20} />} label={Tab.TRANSACTIONS} isActive={activeTab === Tab.TRANSACTIONS} onClick={() => setActiveTab(Tab.TRANSACTIONS)} />
+            <MobileNavItem icon={<Wallet size={20} />} label="薪資" isActive={activeTab === Tab.SALARY_HISTORY} onClick={() => setActiveTab(Tab.SALARY_HISTORY)} />
             <MobileNavItem icon={<CreditCard size={20} />} label="對帳" isActive={activeTab === Tab.RECONCILIATION} onClick={() => setActiveTab(Tab.RECONCILIATION)} />
-            <MobileNavItem icon={<Wallet size={20} />} label="帳務" isActive={activeTab === Tab.BUDGET} onClick={() => setActiveTab(Tab.BUDGET)} />
+            <MobileNavItem icon={<PieChart size={20} />} label="帳務" isActive={activeTab === Tab.BUDGET} onClick={() => setActiveTab(Tab.BUDGET)} />
             <MobileNavItem icon={<SettingsIcon size={20} />} label={Tab.SETTINGS} isActive={activeTab === Tab.SETTINGS} onClick={() => setActiveTab(Tab.SETTINGS)} />
           </div>
         </nav>

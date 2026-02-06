@@ -35,6 +35,7 @@ export interface Transaction {
   category: Category;
   description: string;
   isReconciled: boolean;
+  isPaid?: boolean; // 已繳款
   reconciledDate?: string; // ISO String
   isRecurring?: boolean;
   isInstallment?: boolean;
@@ -63,6 +64,22 @@ export interface BackupData {
   cardSettings: Record<string, CardSetting>;
   incomeSources?: IncomeSource[];
   budgets?: MonthlyBudget[];
+  salaryAdjustments?: SalaryAdjustment[];
+}
+
+export interface SalaryAdjustment {
+  id: string;
+  date: string; // YYYY-MM-DD
+  totalSalary: number; // 調整後總薪資
+  adjustmentItem: string; // 調整項目
+  adjustmentAmount: number; // 調整金額
+  laborInsurance: number; // 勞保
+  healthInsurance: number; // 健保
+  mealCost: number; // 伙食費
+  welfareFund: number; // 福利金
+  // Computed fields:
+  // totalDeductions = laborInsurance + healthInsurance + mealCost + welfareFund
+  // netPay = totalSalary - totalDeductions
 }
 
 // 入帳來源設定

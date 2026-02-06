@@ -1,7 +1,8 @@
 
 // Added CardSetting to imports
-import { Transaction, CardSetting, IncomeSource, MonthlyBudget } from '../types';
+import { Transaction, CardSetting, IncomeSource, MonthlyBudget, BackupData } from '../types';
 
+/*
 export interface BackupData {
   transactions: Transaction[];
   categories: string[];
@@ -12,6 +13,7 @@ export interface BackupData {
   incomeSources?: IncomeSource[];
   budgets?: MonthlyBudget[];
 }
+*/
 
 export const saveToGoogleSheet = async (url: string, data: BackupData): Promise<boolean> => {
   try {
