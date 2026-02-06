@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Calendar, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Calendar, ChevronRight, Activity, Percent } from 'lucide-react';
 import { SalaryAdjustment } from '../types';
 
 interface SalaryHistoryProps {
@@ -14,7 +14,6 @@ const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustm
     const [date, setDate] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [totalSalary, setTotalSalary] = useState('');
     const [adjustmentItem, setAdjustmentItem] = useState('');
-    const [adjustmentAmount, setAdjustmentAmount] = useState('');
     const [laborInsurance, setLaborInsurance] = useState('');
     const [healthInsurance, setHealthInsurance] = useState('');
     const [mealCost, setMealCost] = useState('');
@@ -45,13 +44,80 @@ const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustm
         return [...adjustments].sort((a, b) => a.date.localeCompare(b.date));
     }, [adjustments]);
 
+    // Statistics Calculation
+    const statistics = useMemo(() => {
+        if (chronologicalAdjustments.length < 2) return null;
+
+        const first = chronologicalAdjustments[0];
+        const last = chronologicalAdjustments[chronologicalAdjustments.length - 1];
+
+        // Total Salary Growth
+        const salaryGrowth = last.totalSalary - first.totalSalary;
+        const salaryGrowthPercent = (salaryGrowth / first.totalSalary) * 100;
+
+        // Years difference
+        const firstDate = new Date(first.date + '-01');
+        const lastDate = new Date(last.date + '-01');
+        const yearsDiff = (lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24 * 365);
+
+        // CAGR (Compound Annual Growth Rate)
+        // Formula: (End Value / Start Value)^(1 / Years) - 1
+        let cagr = 0;
+        if (yearsDiff >= 1) {
+            cagr = (Math.pow(last.totalSalary / first.totalSalary, 1 / yearsDiff) - 1) * 100;
+        } else {
+            // If less than a year, just annualized simple growth? Or just show absolute?
+            // Let's stick to simple total growth if < 1 year to avoid massive annualized numbers for short term.
+            // Or maybe just show 0 if not applicable.
+            // Actually, "Annual Salary Growth Rate" usually implies YoY or CAGR.
+            // If we have less than a year, CAGR is mathematically valid but can be misleading (e.g. 10% in 1 month => huge annual info).
+            // Let's fallback to simple growth if years < 1, but labeled differently?
+            // Simplification: Just show CAGR if years >= 1, else "N/A" or hide.
+            cagr = 0;
+        }
+
+        // Insurance Growth (Labor + Health)
+        const firstInsurance = first.laborInsurance + first.healthInsurance;
+        const lastInsurance = last.laborInsurance + last.healthInsurance;
+        const insuranceGrowth = lastInsurance - firstInsurance;
+        const insuranceGrowthPercent = firstInsurance > 0 ? (insuranceGrowth / firstInsurance) * 100 : 0;
+
+        return {
+            salaryGrowth,
+            salaryGrowthPercent,
+            cagr: yearsDiff >= 1 ? cagr : null,
+            insuranceGrowth,
+            insuranceGrowthPercent
+        };
+    }, [chronologicalAdjustments]);
+
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Auto-calculate adjustment amount
+        const currentSalary = parseFloat(totalSalary) || 0;
+        let adjustmentAmount = 0;
+
+        // Find previous record (closest date before current date)
+        const previousRecord = sortedAdjustments.find(adj => adj.date < date);
+
+        if (previousRecord) {
+            adjustmentAmount = currentSalary - previousRecord.totalSalary;
+        } else if (chronologicalAdjustments.length > 0) {
+            // If no earlier record exists but there are records (e.g. inserting at the beginning), maybe diff is 0 or current?
+            // Usually first record has 0 adjustment or it is the base.
+            // Let's assume 0 if it's the very first chronologically.
+            // However, if we are adding a record in the middle, we compared to the one before it.
+            // If date is earlier than all existing, it's the new "first", so adjustment is 0 (or undefined).
+            adjustmentAmount = 0;
+        }
+
         onAddAdjustment({
             date,
-            totalSalary: parseFloat(totalSalary) || 0,
+            totalSalary: currentSalary,
             adjustmentItem,
-            adjustmentAmount: parseFloat(adjustmentAmount) || 0,
+            adjustmentAmount,
             laborInsurance: parseFloat(laborInsurance) || 0,
             healthInsurance: parseFloat(healthInsurance) || 0,
             mealCost: parseFloat(mealCost) || 0,
@@ -65,7 +131,6 @@ const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustm
         setDate(new Date().toISOString().slice(0, 7));
         setTotalSalary('');
         setAdjustmentItem('');
-        setAdjustmentAmount('');
         setLaborInsurance('');
         setHealthInsurance('');
         setMealCost('');
@@ -87,6 +152,49 @@ const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustm
 
     return (
         <div className="space-y-6">
+            {/* Statistics Section */}
+            {statistics && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200">
+                        <div className="flex items-center gap-3 mb-2 opacity-80">
+                            <Activity size={20} />
+                            <h3 className="text-sm font-bold uppercase tracking-widest">總體薪資成長</h3>
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <span className="text-4xl font-black">{statistics.salaryGrowthPercent.toFixed(1)}%</span>
+                            <span className="text-sm font-bold mb-1 opacity-80">
+                                ( +${statistics.salaryGrowth.toLocaleString()} )
+                            </span>
+                        </div>
+                        {statistics.cagr !== null && (
+                            <div className="mt-4 pt-4 border-t border-white/20 flex justify-between items-center">
+                                <span className="text-xs font-bold opacity-70">年均複合成長率 (CAGR)</span>
+                                <span className="text-lg font-black">{statistics.cagr.toFixed(1)}%</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
+                        <div className="absolute right-0 top-0 p-3 opacity-5">
+                            <Percent size={100} />
+                        </div>
+                        <div className="flex items-center gap-3 mb-2 text-slate-400">
+                            <TrendingUp size={20} />
+                            <h3 className="text-sm font-bold uppercase tracking-widest">勞健保費漲幅</h3>
+                        </div>
+                        <div className="flex items-end gap-2 text-slate-800">
+                            <span className="text-4xl font-black">{statistics.insuranceGrowthPercent.toFixed(1)}%</span>
+                            <span className="text-sm font-bold mb-1 text-slate-400">
+                                ( +${statistics.insuranceGrowth.toLocaleString()} )
+                            </span>
+                        </div>
+                        <p className="mt-4 text-xs font-bold text-slate-400">
+                            隨著薪資調整，勞健保負擔增加的比例
+                        </p>
+                    </div>
+                </div>
+            )}
+
             <div className="flex justify-between items-center bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
                 <div>
                     <h2 className="text-lg font-black text-slate-800">薪資調整歷程</h2>
@@ -127,14 +235,10 @@ const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustm
 
                                 <div className="bg-slate-50 p-4 rounded-xl space-y-4 border border-slate-100">
                                     <h4 className="text-xs font-black text-indigo-500 uppercase tracking-widest mb-2">調整細項</h4>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 gap-4">
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-bold text-slate-500">調整項目 (例: 年度調薪)</label>
                                             <input required type="text" value={adjustmentItem} onChange={e => setAdjustmentItem(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="輸入調整原因..." />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-500">本項目調整金額</label>
-                                            <input required type="number" value={adjustmentAmount} onChange={e => setAdjustmentAmount(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="0" />
                                         </div>
                                     </div>
                                 </div>
