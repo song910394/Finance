@@ -45,6 +45,8 @@ function App() {
 
   const isRemoteUpdate = useRef(false);
   const isFirstMount = useRef(true);
+  // 資料護欄：雲端尚未成功載入前禁止自動存檔，避免預設範例資料覆蓋雲端真實資料
+  const hasCloudLoaded = useRef(false);
 
   useEffect(() => {
     const urlToUse = GOOGLE_SCRIPT_URL || localStorage.getItem('google_script_url');
@@ -68,6 +70,9 @@ function App() {
       isRemoteUpdate.current = false;
       return;
     }
+
+    // 雲端載入尚未成功（或失敗）時不自動存檔，維持 error 狀態提示使用者
+    if (!hasCloudLoaded.current) return;
 
     setSyncStatus('syncing');
 
@@ -94,7 +99,7 @@ function App() {
     return () => clearTimeout(timer);
   }, [transactions, categories, budget, cardBanks, cardSettings, incomeSources, budgets, salaryAdjustments, googleScriptUrl]);
 
-  const handleAutoLoad = async (url: string) => {
+  const handleAutoLoad = async (url: string): Promise<boolean> => {
     setSyncStatus('syncing');
     try {
       const data = await loadFromGoogleSheet(url);
@@ -114,9 +119,13 @@ function App() {
       } else {
         setSyncStatus('idle');
       }
+      // 載入成功（含雲端尚無資料的情況）才允許之後的自動存檔
+      hasCloudLoaded.current = true;
+      return true;
     } catch (error) {
       console.error("Auto-load failed", error);
       setSyncStatus('error');
+      return false;
     }
   };
 
@@ -190,11 +199,15 @@ function App() {
   const handleSettingsSync = async (url: string, isUpload: boolean) => {
     setGoogleScriptUrl(url);
     if (isUpload) {
-      await saveToGoogleSheet(url, { transactions, categories, budget, cardBanks, cardSettings, incomeSources, budgets });
+      await saveToGoogleSheet(url, { transactions, categories, budget, cardBanks, cardSettings, incomeSources, budgets, salaryAdjustments });
+      // 使用者明確選擇以本機資料覆蓋雲端，之後允許自動存檔
+      hasCloudLoaded.current = true;
       setSyncStatus('saved');
       setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
     } else {
-      await handleAutoLoad(url);
+      const ok = await handleAutoLoad(url);
+      // 讓 Settings 端的 try/catch 能正確顯示「還原失敗」而不是誤報成功
+      if (!ok) throw new Error('Load from cloud failed');
     }
   };
 
