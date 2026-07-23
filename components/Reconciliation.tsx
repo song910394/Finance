@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, PaymentMethod, CardBank, CardSetting } from '../types';
 import { CheckCircle2, Calculator, X, ChevronRight, Timer, CreditCard, Calendar, RefreshCw, CheckSquare, ShieldCheck } from 'lucide-react';
+import { getCycleRange as getCycleRangeForSetting, isReconciledInCycle, formatLocalYearMonth } from '../utils/billing';
 
 interface ReconciliationProps {
     transactions: Transaction[];
@@ -16,7 +17,7 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
     const [mode, setMode] = useState<'manual' | 'ocr'>('manual');
     const [selectedBank, setSelectedBank] = useState<string>('-');
     const [statementTotal, setStatementTotal] = useState<string>('');
-    const [selectedStatementMonth, setSelectedStatementMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [selectedStatementMonth, setSelectedStatementMonth] = useState(formatLocalYearMonth(new Date()));
     const [selectedCardDetail, setSelectedCardDetail] = useState<string | null>(null);
 
     useEffect(() => {
@@ -41,35 +42,9 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
         }
     }, [selectedBank, selectedStatementMonth, cardSettings]);
 
-    const getCycleRange = (bank: string, yearMonth: string) => {
-        const setting = cardSettings[bank];
-        if (!setting || !setting.statementDay) return null;
-
-        const [year, month] = yearMonth.split('-').map(Number);
-
-        // Determine the actual cycle end date based on the "Billing Month" logic
-        // Rule: Statement Day 1-14 -> Counts as Previous Month's Bill (So for selected month M, we want cycle ending in M+1)
-        //       Statement Day 15-31 -> Counts as Current Month's Bill (So for selected month M, we want cycle ending in M)
-
-        let targetYear = year;
-        let targetMonth = month;
-
-        if (setting.statementDay < 15) {
-            targetMonth = month + 1;
-            if (targetMonth > 12) {
-                targetMonth = 1;
-                targetYear = year + 1;
-            }
-        }
-
-        const endDate = new Date(targetYear, targetMonth - 1, setting.statementDay);
-        const startDate = new Date(targetYear, targetMonth - 2, setting.statementDay + 1);
-
-        return {
-            start: startDate.toISOString().split('T')[0],
-            end: endDate.toISOString().split('T')[0]
-        };
-    };
+    // 週期計算單一來源：utils/billing.ts（含次月結帳設定、短月份截尾、本地時區處理）
+    const getCycleRange = (bank: string, yearMonth: string) =>
+        getCycleRangeForSetting(cardSettings[bank], yearMonth);
 
     const isMonthIssued = (bank: string, month: string) => {
         return cardSettings[bank]?.issuedMonths?.includes(month) || false;
@@ -152,16 +127,7 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
         const range = getCycleRange(selectedBank, selectedStatementMonth);
         if (!range) return 0;
         return transactions
-            .filter(t => {
-                if (t.cardBank !== selectedBank || !t.isReconciled) return false;
-                if (t.date > range.end) return false;
-
-                // Include if transaction date is in cycle OR reconciled date is in cycle
-                if (t.date >= range.start) return true;
-                if (t.reconciledDate && t.reconciledDate.split('T')[0] >= range.start) return true;
-
-                return false;
-            })
+            .filter(t => t.cardBank === selectedBank && isReconciledInCycle(t, range))
             .reduce((s, t) => s + t.amount, 0);
     }, [transactions, selectedBank, selectedStatementMonth, cardSettings]);
 
@@ -175,12 +141,8 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
             // Billed: Just this month's reconciled sum for quick view
             const range = getCycleRange(bank, selectedStatementMonth);
             const billed = txs.filter(t => {
-                if (!t.isReconciled) return false;
-                if (!range) return true;
-                if (t.date > range.end) return false;
-                if (t.date >= range.start) return true;
-                if (t.reconciledDate && t.reconciledDate.split('T')[0] >= range.start) return true;
-                return false;
+                if (!range) return t.isReconciled;
+                return isReconciledInCycle(t, range);
             }).reduce((s, t) => s + t.amount, 0);
 
             const issued = isMonthIssued(bank, selectedStatementMonth);
@@ -197,14 +159,7 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSetti
             // Reconciled List: Show strict cycle range to keep the list relevant to "This Month's Statement"
             if (type === 'reconciled') {
                 if (!range) return t.isReconciled;
-                if (!t.isReconciled) return false;
-                if (t.date > range.end) return false;
-
-                // Include if transaction date is in cycle OR reconciled date is in cycle
-                if (t.date >= range.start) return true;
-                if (t.reconciledDate && t.reconciledDate.split('T')[0] >= range.start) return true;
-
-                return false;
+                return isReconciledInCycle(t, range);
             }
 
             if (t.isReconciled) return false;

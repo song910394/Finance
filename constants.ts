@@ -1,8 +1,16 @@
 
-import { Transaction, PaymentMethod, CardBank } from './types';
+import { Transaction, PaymentMethod, CardBank, IncomeSource } from './types';
 
 // Hardcoded Google Apps Script URL for Cloud Sync
 export const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz6-pTM4Msr32C2sK0q5xCgXgu0x571HudIwFui_HpvKZB2MrwtkTm1dfZVpZtKpBOe3w/exec';
+
+// 預設入帳來源（App 初始狀態與重置資料共用的單一來源）
+export const DEFAULT_INCOME_SOURCES: IncomeSource[] = [
+  { id: '1', name: '姑姑給' },
+  { id: '2', name: '媽媽給' },
+  { id: '3', name: '薪水入帳', defaultDay: 6 },
+  { id: '4', name: '哩婆給' },
+];
 
 // Helper to generate consistent colors for categories using standard vibrant palette
 export const getCategoryColor = (category: string): string => {

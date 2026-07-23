@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Calendar, ChevronRight, Activity, Percent } from 'lucide-react';
 import { SalaryAdjustment } from '../types';
+import { formatLocalYearMonth } from '../utils/billing';
 
 interface SalaryHistoryProps {
     adjustments: SalaryAdjustment[];
@@ -11,7 +12,7 @@ interface SalaryHistoryProps {
 
 const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustment, onDeleteAdjustment }) => {
     const [isAdding, setIsAdding] = useState(false);
-    const [date, setDate] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [date, setDate] = useState(formatLocalYearMonth(new Date())); // YYYY-MM
     const [totalSalary, setTotalSalary] = useState('');
     const [adjustmentItem, setAdjustmentItem] = useState('');
     const [laborInsurance, setLaborInsurance] = useState('');
@@ -128,7 +129,7 @@ const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustm
     };
 
     const resetForm = () => {
-        setDate(new Date().toISOString().slice(0, 7));
+        setDate(formatLocalYearMonth(new Date()));
         setTotalSalary('');
         setAdjustmentItem('');
         setLaborInsurance('');

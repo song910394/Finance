@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Transaction, PaymentMethod, CardBank, Category } from '../types';
 import { getCategoryColor } from '../constants';
+import { formatLocalDate, formatLocalYearMonth, parseLocalDate, shiftYearMonth } from '../utils/billing';
 import { Plus, Search, Trash2, Calendar, Pencil, LayoutList, ChevronDown, RefreshCcw, X, SplitSquareVertical, Download, Upload, ChevronLeft, ChevronRight, CreditCard, Wallet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -37,7 +38,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState<'month' | 'year' | 'all'>('month');
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [selectedMonth, setSelectedMonth] = useState(formatLocalYearMonth(new Date()));
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
     const [filterCategory, setFilterCategory] = useState('');
     const [filterMethod, setFilterMethod] = useState('');
@@ -47,7 +48,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
 
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(formatLocalDate(new Date()));
     const [amount, setAmount] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CREDIT_CARD);
     const [cardBank, setCardBank] = useState<string>('台新');
@@ -88,7 +89,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
         const ws = XLSX.utils.json_to_sheet(dataToExport);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "記帳明細");
-        XLSX.writeFile(wb, `記帳明細_${new Date().toISOString().split('T')[0]}.xlsx`);
+        XLSX.writeFile(wb, `記帳明細_${formatLocalDate(new Date())}.xlsx`);
     };
 
     const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,7 +105,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
             const data = XLSX.utils.sheet_to_json(ws);
 
             const newTransactions: Omit<Transaction, 'id'>[] = data.map((row: any) => ({
-                date: row['日期'] || new Date().toISOString().split('T')[0],
+                date: row['日期'] || formatLocalDate(new Date()),
                 category: row['類別'] || '其他',
                 amount: parseFloat(row['金額']) || 0,
                 description: row['說明'] || '匯入項目',
@@ -161,13 +162,13 @@ const TransactionList: React.FC<TransactionListProps> = ({
         if (editingId) {
             onEditTransaction(editingId, { ...baseTx, date, amount: totalAmount, description });
         } else if (useRecurring) {
-            const recurringGroupId = `recurring_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            const baseDate = new Date(date);
+            const recurringGroupId = `recurring_${crypto.randomUUID()}`;
+            const baseDate = parseLocalDate(date);
             onAddTransactions(Array.from({ length: 12 }).map((_, i) => {
                 const d = getAdjustedDate(baseDate, i);
                 return {
                     ...baseTx,
-                    date: d.toISOString().split('T')[0],
+                    date: formatLocalDate(d),
                     amount: totalAmount,
                     description: i === 0 ? description : `${description} (固定支出)`,
                     recurringGroupId
@@ -179,11 +180,11 @@ const TransactionList: React.FC<TransactionListProps> = ({
                 const perPeriod = Math.floor(totalAmount / count);
                 const remainder = totalAmount % count;
                 onAddTransactions(Array.from({ length: count }).map((_, i) => {
-                    const d = new Date(date); d.setMonth(d.getMonth() + i);
+                    const d = getAdjustedDate(parseLocalDate(date), i);
                     const currentAmount = i === 0 ? perPeriod + remainder : perPeriod;
                     return {
                         ...baseTx,
-                        date: d.toISOString().split('T')[0],
+                        date: formatLocalDate(d),
                         amount: currentAmount,
                         description: `${description} (${i + 1}/${count})`
                     };
@@ -206,7 +207,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
         setDescription('');
         setIsRecurring(false);
         setIsInstallment(false);
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(formatLocalDate(new Date()));
         // Default to first available category if not set
         if (!category && categories.length > 0) setCategory(categories[0]);
         setIsAdding(true);
@@ -273,11 +274,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                     {filterType === 'month' && (
                         <div className="relative flex items-center">
                             <button
-                                onClick={() => {
-                                    const d = new Date(selectedMonth + '-01');
-                                    d.setMonth(d.getMonth() - 1);
-                                    setSelectedMonth(d.toISOString().slice(0, 7));
-                                }}
+                                onClick={() => setSelectedMonth(shiftYearMonth(selectedMonth, -1))}
                                 className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
                                 title="上個月"
                             >
@@ -285,11 +282,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                             </button>
                             <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-white px-1 py-0.5 rounded-lg text-xs font-black text-indigo-600 outline-none border border-slate-200 appearance-none cursor-pointer w-[90px] text-center" />
                             <button
-                                onClick={() => {
-                                    const d = new Date(selectedMonth + '-01');
-                                    d.setMonth(d.getMonth() + 1);
-                                    setSelectedMonth(d.toISOString().slice(0, 7));
-                                }}
+                                onClick={() => setSelectedMonth(shiftYearMonth(selectedMonth, 1))}
                                 className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
                                 title="下個月"
                             >

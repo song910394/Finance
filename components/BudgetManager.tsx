@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Wallet, Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Calculator, CreditCard, Home, PiggyBank } from 'lucide-react';
 import { Transaction, PaymentMethod, CardSetting, IncomeSource, MonthlyBudget } from '../types';
+import { formatLocalYearMonth, shiftYearMonth } from '../utils/billing';
 
 interface BudgetManagerProps {
     transactions: Transaction[];
@@ -13,17 +14,10 @@ interface BudgetManagerProps {
     onUpdateBudgets: (budgets: MonthlyBudget[]) => void;
 }
 
-const DEFAULT_INCOME_SOURCES: IncomeSource[] = [
-    { id: '1', name: '姑姑給', defaultDay: undefined },
-    { id: '2', name: '媽媽給', defaultDay: undefined },
-    { id: '3', name: '薪水入帳', defaultDay: 6 },
-    { id: '4', name: '哩婆給', defaultDay: undefined },
-];
-
 const BudgetManager: React.FC<BudgetManagerProps> = ({
     transactions, cardBanks, cardSettings, incomeSources, budgets, onUpdateIncomeSources, onUpdateBudgets
 }) => {
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [selectedMonth, setSelectedMonth] = useState(formatLocalYearMonth(new Date()));
     const [showAddIncome, setShowAddIncome] = useState(false);
     const [newIncomeName, setNewIncomeName] = useState('');
 
@@ -106,17 +100,9 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
         onUpdateIncomeSources(incomeSources.filter(s => s.id !== id));
     };
 
-    const prevMonth = () => {
-        const d = new Date(selectedMonth + '-01');
-        d.setMonth(d.getMonth() - 1);
-        setSelectedMonth(d.toISOString().slice(0, 7));
-    };
+    const prevMonth = () => setSelectedMonth(shiftYearMonth(selectedMonth, -1));
 
-    const nextMonth = () => {
-        const d = new Date(selectedMonth + '-01');
-        d.setMonth(d.getMonth() + 1);
-        setSelectedMonth(d.toISOString().slice(0, 7));
-    };
+    const nextMonth = () => setSelectedMonth(shiftYearMonth(selectedMonth, 1));
 
     return (
         <div className="space-y-4 md:space-y-6 animate-fade-in pb-10">

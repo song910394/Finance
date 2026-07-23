@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Transaction, Category, CategorySummary, CardBank, PaymentMethod, CardSetting } from '../types';
 import { getCategoryColor } from '../constants';
+import { getCycleRange, isReconciledInCycle, formatLocalYearMonth, shiftYearMonth } from '../utils/billing';
 import { Wallet, DollarSign, CreditCard, TrendingUp, Calendar, ChevronDown, ChevronLeft, ChevronRight, Banknote, X, ArrowRight, Filter, CalendarClock, PieChart as PieChartIcon, List } from 'lucide-react';
 
 interface DashboardProps {
@@ -14,7 +15,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, cardSettings }) => {
     const [filterType, setFilterType] = useState<'month' | 'year' | 'all'>('month');
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [selectedMonth, setSelectedMonth] = useState(formatLocalYearMonth(new Date()));
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
     const [excludeAgency, setExcludeAgency] = useState(true);
 
@@ -57,73 +58,21 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
     }, [statsTransactions]);
 
     const effectiveBudget = useMemo(() => filterType === 'year' ? budget * 12 : budget, [budget, filterType]);
-    const budgetProgress = Math.min((totalExpense / effectiveBudget) * 100, 100);
+    // 預算為 0 時避免 Infinity / NaN
+    const budgetPercent = effectiveBudget > 0 ? Math.round((totalExpense / effectiveBudget) * 100) : 0;
+    const budgetProgress = effectiveBudget > 0 ? Math.min((totalExpense / effectiveBudget) * 100, 100) : 0;
 
     const cardStatus = useMemo(() => {
         const cards = cardBanks.filter(c => c !== CardBank.NONE && c !== '-');
-
-        // Helper function to get cycle range based on statement day
-        // Rule: Statement Day 1-14 -> Counts as Previous Month's Bill (So for selected month M, we want cycle ending in M+1)
-        //       Statement Day 15-31 -> Counts as Current Month's Bill (So for selected month M, we want cycle ending in M)
-        const getCycleRange = (bank: string, yearMonth: string) => {
-            const setting = cardSettings[bank];
-            if (!setting || !setting.statementDay) return null;
-
-            const [year, month] = yearMonth.split('-').map(Number);
-
-            // Determine the actual cycle end date based on the "Billing Month" logic
-            // If statement day is small (e.g. 3), it belongs to the previous month's bill.
-            // So if we are viewing "December Bill" (yearMonth = 12), and day is 3,
-            // it means the cycle ends in January (12+1).
-            // If day is 23, it ends in December (12).
-
-            let targetYear = year;
-            let targetMonth = month;
-
-            // Check if this card follows "Next Month" logic (Day < 15)
-            // We use 15 as the cutoff based on user requirement "1-14算上月, 15-31算當月"
-            // This implies: For "Billing Month M", if Day < 15, the statement date is in M+1.
-            if (setting.statementDay < 15) {
-                targetMonth = month + 1;
-                if (targetMonth > 12) {
-                    targetMonth = 1;
-                    targetYear = year + 1;
-                }
-            }
-
-            const endDate = new Date(targetYear, targetMonth - 1, setting.statementDay);
-            const startDate = new Date(targetYear, targetMonth - 2, setting.statementDay + 1);
-
-            return {
-                start: startDate.toISOString().split('T')[0],
-                end: endDate.toISOString().split('T')[0]
-            };
-        };
-
-        // 計算當月和前一個月的範圍（用於未出帳計算）
-        const [baseYear, baseMonth] = selectedMonth.split('-').map(Number);
-        const currentMonthStart = `${selectedMonth}-01`;
-        const currentMonthEnd = new Date(baseYear, baseMonth, 0).toISOString().split('T')[0]; // 當月最後一天
-
-        // 前一個月
-        let prevYear = baseYear;
-        let prevMonth = baseMonth - 1;
-        if (prevMonth < 1) {
-            prevMonth = 12;
-            prevYear = baseYear - 1;
-        }
-        const prevMonthStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`;
-        const prevMonthEnd = new Date(prevYear, prevMonth, 0).toISOString().split('T')[0]; // 前月最後一天
 
         return cards.map(bank => {
             const allBankTxs = transactions.filter(t => t.cardBank === bank);
             const setting = cardSettings[bank];
             const statementDay = setting?.statementDay || 0;
-            const isNextMonth = setting?.isNextMonth || false;
 
             // 計算未出帳：計算截止至本期帳單結帳日的所有「未核銷」金額
             // 這包含了本期新增的消費，以及過往所有尚未核銷的消費（自動滾入）
-            const range = getCycleRange(bank, selectedMonth);
+            const range = getCycleRange(setting, selectedMonth);
 
             const unbilled = allBankTxs.filter(t => {
                 if (t.isReconciled) return false;
@@ -140,19 +89,11 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                 const savedAmount = setting?.statementAmounts?.[selectedMonth];
                 if (savedAmount !== undefined) {
                     billedRecent = savedAmount;
-                } else {
+                } else if (range) {
                     // Priority 2: Calculate from reconciled transactions
-                    if (range) {
-                        billedRecent = allBankTxs
-                            .filter(t => {
-                                if (!t.isReconciled) return false;
-                                if (t.date > range.end) return false;
-                                if (t.date >= range.start) return true;
-                                if (t.reconciledDate && t.reconciledDate.split('T')[0] >= range.start) return true;
-                                return false;
-                            })
-                            .reduce((sum, t) => sum + t.amount, 0);
-                    }
+                    billedRecent = allBankTxs
+                        .filter(t => isReconciledInCycle(t, range))
+                        .reduce((sum, t) => sum + t.amount, 0);
                 }
             } else {
                 // 如果沒有設定結帳日，fallback 到原本邏輯（只顯示當月已核銷）
@@ -257,7 +198,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
             const monthsRemainingFromCurrent = totalPeriods - currentPeriod;
             endDate.setMonth(endDate.getMonth() + monthsRemainingFromCurrent);
 
-            const endMonth = endDate.toISOString().slice(0, 7);
+            const endMonth = formatLocalYearMonth(endDate);
 
             return {
                 name,
@@ -276,7 +217,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
             .sort((a, b) => a.endMonth.localeCompare(b.endMonth));
 
         // Calculate current month's installment total
-        const currentMonth = new Date().toISOString().slice(0, 7);
+        const currentMonth = formatLocalYearMonth(new Date());
         const monthlyTotal = installmentTxs
             .filter(t => t.date.startsWith(currentMonth))
             .reduce((sum, t) => sum + t.amount, 0);
@@ -344,11 +285,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                         {filterType === 'month' && (
                             <div className="relative flex items-center bg-white">
                                 <button
-                                    onClick={() => {
-                                        const d = new Date(selectedMonth + '-01');
-                                        d.setMonth(d.getMonth() - 1);
-                                        setSelectedMonth(d.toISOString().slice(0, 7));
-                                    }}
+                                    onClick={() => setSelectedMonth(shiftYearMonth(selectedMonth, -1))}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                     title="上個月"
                                 >
@@ -361,11 +298,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                                     className="w-[100px] md:w-[130px] px-1 py-2 text-[10px] md:text-xs text-slate-700 font-black focus:outline-none bg-transparent cursor-pointer text-center"
                                 />
                                 <button
-                                    onClick={() => {
-                                        const d = new Date(selectedMonth + '-01');
-                                        d.setMonth(d.getMonth() + 1);
-                                        setSelectedMonth(d.toISOString().slice(0, 7));
-                                    }}
+                                    onClick={() => setSelectedMonth(shiftYearMonth(selectedMonth, 1))}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                     title="下個月"
                                 >
@@ -406,7 +339,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                         <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate font-display">預算達成率</p>
                     </div>
                     <div className="flex justify-between items-end mb-2">
-                        <h3 className="text-xl md:text-3xl font-black text-slate-800 font-number tracking-tight">{Math.round((totalExpense / effectiveBudget) * 100)}%</h3>
+                        <h3 className="text-xl md:text-3xl font-black text-slate-800 font-number tracking-tight">{budgetPercent}%</h3>
                         <span className="text-[10px] text-slate-400 font-bold hidden md:inline font-number">目標: ${effectiveBudget.toLocaleString()}</span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-1.5 md:h-2 overflow-hidden">

@@ -8,7 +8,7 @@ import Settings from './components/Settings';
 import BudgetManager from './components/BudgetManager';
 import SalaryHistory from './components/SalaryHistory';
 import { Transaction, DEFAULT_CATEGORIES, CardBank, CardSetting, IncomeSource, MonthlyBudget, SalaryAdjustment } from './types';
-import { INITIAL_TRANSACTIONS, GOOGLE_SCRIPT_URL } from './constants';
+import { INITIAL_TRANSACTIONS, GOOGLE_SCRIPT_URL, DEFAULT_INCOME_SOURCES } from './constants';
 import { saveToGoogleSheet, loadFromGoogleSheet } from './services/googleSheetService';
 
 enum Tab {
@@ -30,12 +30,7 @@ function App() {
   const [cardBanks, setCardBanks] = useState<string[]>(Object.values(CardBank));
   const [budget, setBudget] = useState<number>(50000);
   const [cardSettings, setCardSettings] = useState<Record<string, CardSetting>>({});
-  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([
-    { id: '1', name: '姑姑給' },
-    { id: '2', name: '媽媽給' },
-    { id: '3', name: '薪水入帳', defaultDay: 6 },
-    { id: '4', name: '哩婆給' },
-  ]);
+  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>(DEFAULT_INCOME_SOURCES);
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [salaryAdjustments, setSalaryAdjustments] = useState<SalaryAdjustment[]>([]);
 
@@ -107,7 +102,7 @@ function App() {
         isRemoteUpdate.current = true;
         if (data.transactions) setTransactions(data.transactions);
         if (data.categories) setCategories(data.categories);
-        if (data.budget) setBudget(data.budget);
+        if (typeof data.budget === 'number') setBudget(data.budget);
         if (data.cardBanks) setCardBanks(data.cardBanks);
         if (data.cardSettings) setCardSettings(data.cardSettings);
         if (data.incomeSources) setIncomeSources(data.incomeSources);
@@ -132,7 +127,7 @@ function App() {
   const addTransaction = (newTx: Omit<Transaction, 'id'>) => {
     const transaction: Transaction = {
       ...newTx,
-      id: Math.random().toString(36).substr(2, 9)
+      id: crypto.randomUUID()
     };
     setTransactions(prev => [transaction, ...prev]);
   };
@@ -146,7 +141,7 @@ function App() {
     }
     const transactionsToAdd = newTxs.map(tx => ({
       ...tx,
-      id: Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 5)
+      id: crypto.randomUUID()
     }));
     setTransactions(prev => [...transactionsToAdd, ...prev]);
   };
@@ -179,7 +174,7 @@ function App() {
   };
 
   const addSalaryAdjustment = (adjustment: Omit<SalaryAdjustment, 'id'>) => {
-    const newAdj = { ...adjustment, id: Math.random().toString(36).substr(2, 9) };
+    const newAdj = { ...adjustment, id: crypto.randomUUID() };
     setSalaryAdjustments(prev => [...prev, newAdj]);
   };
 
@@ -194,6 +189,9 @@ function App() {
     setCardBanks(Object.values(CardBank));
     setBudget(50000);
     setCardSettings({});
+    setIncomeSources(DEFAULT_INCOME_SOURCES);
+    setBudgets([]);
+    setSalaryAdjustments([]);
   };
 
   const handleSettingsSync = async (url: string, isUpload: boolean) => {
