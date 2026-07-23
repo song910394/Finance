@@ -23,11 +23,6 @@
     <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512x512.png">
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192x192.png">
 
-    <!-- Polyfill for process.env -->
-    <script>
-      window.process = { env: { API_KEY: "" } };
-    </script>
-
     <!-- Service Worker Registration -->
     <script>
       if ('serviceWorker' in navigator) {
@@ -62,7 +57,6 @@
         "react-dom": "https://esm.sh/react-dom@19.0.0",
         "react-dom/": "https://esm.sh/react-dom@19.0.0/",
         "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
-        "@google/genai": "https://esm.sh/@google/genai@1.30.0",
         "lucide-react": "https://esm.sh/lucide-react@0.454.0?deps=react@19.0.0",
         "recharts": "https://esm.sh/recharts@2.13.0?deps=react@19.0.0,react-dom@19.0.0",
         "xlsx": "https://esm.sh/xlsx@0.18.5"
