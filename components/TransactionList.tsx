@@ -212,11 +212,11 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, categor
 
     return <div className="space-y-4 md:space-y-6">
         <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-3">
-            <div className="flex flex-wrap gap-3 items-center">
+            <div className="transaction-search flex flex-wrap gap-3 items-center">
                 <div className="relative flex-1 min-w-48"><Search aria-hidden="true" size={18} className="absolute left-3 top-3.5 text-slate-400" /><input aria-label="搜尋消費說明或類別" placeholder="搜尋消費說明或類別" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} className={`${inputClass} pl-10`} /></div>
                 <button type="button" onClick={openAdd} className={`${primaryButton} flex items-center gap-2`}><Plus size={18} />新增支出</button>
             </div>
-            <div className="flex flex-wrap gap-2 items-center">
+            <div className="transaction-filters flex flex-wrap gap-2 items-center">
                 <select aria-label="資料期間" className={secondaryButton} value={filterType} onChange={event => setFilterType(event.target.value as 'month' | 'year' | 'all')}><option value="month">按月</option><option value="year">按年</option><option value="all">全部期間</option></select>
                 {filterType === 'month' && <div className="flex items-center"><button type="button" aria-label="上個月" className="min-h-11 min-w-11 p-2" onClick={() => onMonthChange(shiftYearMonth(selectedMonth, -1))}><ChevronLeft size={18} /></button><input aria-label="記帳月份" type="month" value={selectedMonth} onChange={event => { if (event.target.value) onMonthChange(event.target.value); }} className="min-h-11 w-36 border border-slate-300 p-2 rounded-xl text-sm" /><button type="button" aria-label="下個月" className="min-h-11 min-w-11 p-2" onClick={() => onMonthChange(shiftYearMonth(selectedMonth, 1))}><ChevronRight size={18} /></button></div>}
                 {filterType === 'year' && <select aria-label="記帳年度" className={secondaryButton} value={selectedYear} onChange={event => setSelectedYear(event.target.value)}>{availableYears.map(year => <option key={year}>{year}</option>)}</select>}

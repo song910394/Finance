@@ -203,6 +203,34 @@ main input[type="number"] {
 }
 @media (max-width: 767px) {
   input, select, textarea { font-size: 16px; }
+  #root > div > div > header { padding-top: calc(.5rem + env(safe-area-inset-top, 0px)); }
+  dialog[aria-labelledby="transaction-dialog-title"] { max-height: calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important; }
+  dialog[aria-labelledby="transaction-dialog-title"] form > .grid:has(select) { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; }
+  dialog[aria-labelledby="transaction-dialog-title"] label { min-width: 0; }
+  dialog[aria-labelledby="transaction-dialog-title"] select { padding-left: .5rem; padding-right: .25rem; }
+  dialog input[type="date"], input[type="month"] { min-width: 0; max-width: 100%; }
+  dialog input[type="date"] { width: 100%; box-sizing: border-box; }
+  .transaction-search { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .5rem; }
+  .transaction-search > div { min-width: 0; }
+  .transaction-search > button { padding-left: .75rem; padding-right: .75rem; }
+  .transaction-filters { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: .5rem; }
+  .transaction-filters > select { grid-column: span 2; width: 100%; min-width: 0; padding-left: .5rem; padding-right: .25rem; }
+  .transaction-filters > div:has(input[type="month"]) { grid-column: span 4; min-width: 0; }
+  .transaction-filters input[type="month"] { width: 100%; flex: 1; padding-left: .25rem; padding-right: .25rem; }
+  .transaction-filters > div:has(input[type="month"]) button { min-width: 2rem; padding: .25rem; }
+  .transaction-filters > select[aria-label="記帳年度"] { grid-column: span 4; }
+  .transaction-filters > div:has(input[type="file"]) { grid-column: 1 / -1; margin-left: 0; }
+  .transaction-filters > div:has(input[type="file"]) button { flex: 1; justify-content: center; }
+  .tile-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: .5rem; }
+  .tile-grid > * { min-width: 0; padding: .75rem; overflow-wrap: anywhere; }
+  .tile-grid .text-2xl { font-size: 1.375rem; }
+  .summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .5rem; align-items: stretch; }
+  .summary-grid > * { min-width: 0; overflow-wrap: anywhere; }
+}
+@media (max-width: 359px) {
+  dialog[aria-labelledby="transaction-dialog-title"] form > .grid:has(select) { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .transaction-filters > select { grid-column: span 3; }
+  .transaction-filters > select[aria-label="資料期間"] { grid-column: span 2; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
