@@ -10,14 +10,28 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
 });
 
 describe('summarizeInstallments', () => {
-    it('同名但不同 ID 的分期各自統計；舊資料不依名稱合併', () => {
+    it('同名但不同 ID 的分期各自統計；無期數的舊資料仍待確認', () => {
         const result = summarizeInstallments([
             transaction(),
             transaction({ id: 'other', installmentGroupId: 'plan-b', cardBank: '國泰', installmentCount: 24 }),
-            transaction({ id: 'legacy', installmentGroupId: undefined, installmentNumber: undefined, installmentCount: undefined }),
+            transaction({ id: 'legacy', description: '手機', installmentGroupId: undefined, installmentNumber: undefined, installmentCount: undefined }),
         ], '2026-01');
         expect(result.groups.map(group => group.id)).toEqual(['plan-a', 'plan-b']);
         expect(result.unconfirmed.map(t => t.id)).toEqual(['legacy']);
+    });
+
+    it('舊系統預建紀錄依期數與起始月份分組，金額不重建、未核對不算已繳', () => {
+        const rows = [1, 2, 3].map(n => transaction({ id: String(n), installmentGroupId: undefined,
+            installmentNumber: undefined, installmentCount: undefined, isInstallment: false,
+            description: `手機 (${n}/3)`, date: `2026-0${n}-28`, amount: n === 1 ? 334 : 333, isReconciled: n === 1 }));
+        const before = JSON.stringify(rows);
+        const result = summarizeInstallments(rows, '2026-02');
+        expect(result.unconfirmed).toHaveLength(0);
+        expect(result.groups[0]).toMatchObject({ name: '手機', recordedAmount: 1000, reconciledPeriods: 1, unreconciledAmount: 666, completeSchedule: true });
+        expect(result.monthlyTotal).toBe(333);
+        expect(JSON.stringify(rows)).toBe(before);
+        expect(summarizeInstallments([...rows, { ...rows[0], id: 'duplicate' }], '2026-02').groups).toHaveLength(0);
+        expect(summarizeInstallments([...rows, ...rows.map(t => ({ ...t, id: t.id + '-later', date: t.date.replace('2026', '2027') }))], '2026-02').groups).toHaveLength(2);
     });
 
     it('加總實際明細，保留首期餘數；核銷不宣稱已繳款', () => {

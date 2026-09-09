@@ -5,6 +5,7 @@ import { loadFromGoogleSheet, saveToGoogleSheet } from './googleSheetService';
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
   readonly length?: number;
   key?(index: number): string | null;
 }
@@ -135,6 +136,10 @@ export function createFinanceSync(options: Options) {
   };
   const preserveReplacedDraft = (url: string, draft: Draft | null, replacement: FinanceData) => {
     if (!draft || same(draft.data, replacement)) return;
+    if (readRecoveries(url).some(item => {
+      const raw = storage?.getItem(recoveryKey(url, item.id));
+      return raw && same(decodeDraft(raw).data, draft.data);
+    })) return;
     // An explicit choice changes the active version, but the displaced version stays selectable.
     storeRecovery(url, `replaced-${writerId}-${Date.now()}-${revision}`, draft, true);
   };
@@ -376,6 +381,17 @@ export function createFinanceSync(options: Options) {
       if (!snapshot.url && !snapshot.pendingUrl) { persist(); emit({ status: storageError ? 'error' : 'local', error: storageError }); return; }
       if (retryMode === 'save' && cloudReady) { persist(); return flush(); }
       return restore(retryUrl || snapshot.pendingUrl || snapshot.url);
+    },
+    deleteRecoveries: (ids: string[]) => {
+      if (!storage?.removeItem) throw new Error('無法刪除本機備份');
+      const current = readRecoveries(snapshot.url);
+      if (ids.some(id => id === selectedRecovery)) throw new Error('這份草稿目前正在使用，請先完成版本選擇再刪除');
+      if (ids.some(id => !current.some(item => item.id === id))) throw new Error('備份清單已變更，請重新確認');
+      // Only recovery keys are removed; active drafts and cloud data stay intact.
+      try {
+        for (const id of ids) storage.removeItem(recoveryKey(snapshot.url, id));
+        storage.setItem(recoveryIndexKey(snapshot.url), JSON.stringify(current.filter(item => !ids.includes(item.id)).map(item => item.id)));
+      } finally { emit({ recoveries: readRecoveries(snapshot.url) }); }
     },
     selectRecovery: (id: string) => {
       if (!snapshot.recoveries.some((recovery) => recovery.id === id)) throw new Error('找不到指定的本機草稿');

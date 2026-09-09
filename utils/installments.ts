@@ -16,20 +16,34 @@ export interface InstallmentGroupSummary {
 
 const sum = (values: number[]) => Math.round(values.reduce((total, value) => total + value, 0) * 100) / 100;
 
-/** Only an explicit ID establishes a plan. A description is never a grouping key. */
+const legacyPeriod = (description: string) => description.match(/^(.+?)\s*(?:[（(]\s*(?:分期\s*:?\s*)?(\d+)\s*\/\s*(\d+)\s*[)）]|分期\s*:?\s*(\d+)\s*\/\s*(\d+))\s*$/);
+
+/** Legacy schedules already contain each monthly payment; derive display groups without editing records. */
 export const summarizeInstallments = (transactions: Transaction[], month: string) => {
-    const records = transactions.filter(t => t.isInstallment || t.installmentGroupId);
+    const records = transactions.filter(t => t.isInstallment || t.installmentGroupId || legacyPeriod(t.description));
     const grouped = new Map<string, Transaction[]>();
     const unconfirmed: Transaction[] = [];
 
-    for (const transaction of records) {
+    for (const original of records) {
+        let transaction = original;
         if (!transaction.installmentGroupId) {
-            unconfirmed.push(transaction);
-            continue;
+            const match = legacyPeriod(transaction.description);
+            const number = Number(match?.[2] ?? match?.[4]);
+            const count = Number(match?.[3] ?? match?.[5]);
+            if (!match || number < 1 || count < number ||
+                (transaction.installmentNumber !== undefined && transaction.installmentNumber !== number) ||
+                (transaction.installmentCount !== undefined && transaction.installmentCount !== count)) {
+                unconfirmed.push(original); continue;
+            }
+            const [year, monthNumber] = transaction.date.split('-').map(Number);
+            const start = year * 12 + monthNumber - number;
+            transaction = { ...transaction, installmentNumber: number, installmentCount: count,
+                installmentGroupId: 'legacy:' + JSON.stringify([match[1].trim(), transaction.cardBank, transaction.paymentMethod, transaction.category, count, start]) };
         }
-        const group = grouped.get(transaction.installmentGroupId) ?? [];
+        const groupId = transaction.installmentGroupId!;
+        const group = grouped.get(groupId) ?? [];
         group.push(transaction);
-        grouped.set(transaction.installmentGroupId, group);
+        grouped.set(groupId, group);
     }
 
     const groups: InstallmentGroupSummary[] = [];
@@ -51,7 +65,7 @@ export const summarizeInstallments = (transactions: Transaction[], month: string
         const lastDate = group.reduce((last, t) => t.date > last ? t.date : last, '');
         groups.push({
             id,
-            name: first.description.replace(/\s*[（(]\s*(?:分期\s*)?\d+\/\d+\s*[)）]\s*$/, '') || first.description,
+            name: legacyPeriod(first.description)?.[1].trim() || first.description,
             cardBank: first.cardBank,
             totalPeriods: count,
             recordedPeriods: group.length,

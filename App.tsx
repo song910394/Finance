@@ -143,10 +143,11 @@ export default function App() {
           </section>}
           {sync.recoveries.length > 0 && <details open={sync.recoveries.some(item => !item.reviewed)} className="rounded-2xl border border-amber-200 bg-white p-4 text-sm">
             <summary className="cursor-pointer font-bold">其他本機草稿（{sync.recoveries.length} 個版本）</summary>
-            <p className="mt-2 text-slate-600">這些草稿來自目前帳本的分頁衝突。選取後會暫停自動上傳，請檢查內容、匯出備份，再選擇要保留的版本。</p>
+            <p className="mt-2 text-slate-600">這些備份來自分頁衝突或版本替換。載入後會暫停自動上傳；刪除只移除這份備份，不影響目前帳本或雲端資料。</p>
+            <button type="button" disabled={busy || !sync.recoveries.some(item => item.reviewed)} onClick={() => { const ids = sync.recoveries.filter(item => item.reviewed).map(item => item.id); if (window.confirm(`刪除 ${ids.length} 份已處理備份？刪除後無法復原，目前帳本與雲端資料不受影響。`)) void runAction(async () => controller.deleteRecoveries(ids)); }} className="mt-2 rounded-lg border px-3 py-2 disabled:opacity-50">清除已處理備份</button>
             <ul className="mt-3 space-y-2">{sync.recoveries.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3">
               <span>{item.savedAt ? new Date(item.savedAt).toLocaleString('zh-TW', { hour12: false }) : '時間待確認'} · {item.transactionCount} 筆交易 · {item.reviewed ? '已處理，保留備份' : '待確認'}</span>
-              <button type="button" disabled={busy} onClick={() => void runAction(async () => { controller.selectRecovery(item.id); })} className="rounded-xl border border-slate-200 bg-white px-4 py-3 font-bold text-indigo-700 disabled:opacity-50">檢視此草稿</button>
+              <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => void runAction(async () => { controller.selectRecovery(item.id); })} className="rounded-xl border border-slate-200 bg-white px-4 py-3 font-bold text-indigo-700 disabled:opacity-50">載入此草稿</button><button type="button" disabled={busy} onClick={() => { if (window.confirm('刪除這份備份？刪除後無法復原，目前帳本與雲端資料不受影響。')) void runAction(async () => controller.deleteRecoveries([item.id])); }} className="rounded-xl border border-rose-200 px-3 py-2 text-rose-700 disabled:opacity-50">刪除</button></div>
             </li>)}</ul>
           </details>}
           {(sync.status === 'error' || actionError) && <section role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">

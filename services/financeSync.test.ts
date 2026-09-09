@@ -8,7 +8,7 @@ const B = 'https://example.test/b';
 const data = (budget = 100): FinanceData => ({ transactions: [], categories: ['其他'], budget, cardBanks: ['-'], cardSettings: {}, incomeSources: [], budgets: [], salaryAdjustments: [] });
 function memory() {
   const values = new Map<string, string>();
-  return { values, get length() { return values.size; }, key: (index: number) => [...values.keys()][index] ?? null, getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
+  return { values, get length() { return values.size; }, key: (index: number) => [...values.keys()][index] ?? null, getItem: (key: string) => values.get(key) ?? null, removeItem: (key: string) => { values.delete(key); }, setItem: (key: string, value: string) => { values.set(key, value); } };
 }
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -29,6 +29,25 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => { controllers.splice(0).forEach((controller) => controller.stop()); vi.useRealTimers(); });
 
 describe('finance sync persistence and request ordering', () => {
+  it('反覆載入相同版本不增加備份；刪除只移除備份且保護使用中草稿', async () => {
+    const { controller, storage, save } = setup();
+    await controller.start();
+    controller.update(current => ({ ...current, budget: 222 }), true);
+    const original = controller.getSnapshot().recoveries[0].id;
+    controller.selectRecovery(original);
+    const replacement = controller.getSnapshot().recoveries.find(item => item.id !== original)!.id;
+    controller.selectRecovery(replacement);
+    controller.selectRecovery(original);
+    expect(controller.getSnapshot().recoveries).toHaveLength(2);
+    expect(() => controller.deleteRecoveries([original])).toThrow('正在使用');
+    const active = storage.getItem(getFinanceStorageKey(A));
+    controller.deleteRecoveries([replacement]);
+    expect(controller.getSnapshot().data.budget).toBe(100);
+    expect(storage.getItem(getFinanceStorageKey(A))).toBe(active);
+    expect(controller.getSnapshot().recoveries.map(item => item.id)).toEqual([original]);
+    expect(save).not.toHaveBeenCalled();
+    expect(storage.getItem(`${getFinanceStorageKey(A)}:recovery:${replacement}`)).toBeNull();
+  });
   it('批次更新前保留完整原版本，重新開啟後仍可取回', async () => {
     const { controller, storage } = setup();
     await controller.start();
