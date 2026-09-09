@@ -1,717 +1,143 @@
-
-import React, { useMemo, useState } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
-import { Transaction, Category, CategorySummary, CardBank, PaymentMethod, CardSetting } from '../types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, Banknote, CalendarClock, ChevronLeft, ChevronRight, CreditCard, Plus, Wallet, X } from 'lucide-react';
+import { Transaction, PaymentMethod, CardSetting } from '../types';
 import { getCategoryColor } from '../constants';
-import { getCycleRange, isReconciledInCycle, formatLocalYearMonth, shiftYearMonth } from '../utils/billing';
-import { Wallet, DollarSign, CreditCard, TrendingUp, Calendar, ChevronDown, ChevronLeft, ChevronRight, Banknote, X, ArrowRight, Filter, CalendarClock, PieChart as PieChartIcon, List } from 'lucide-react';
+import { getStatementSummary, isYearMonth, shiftYearMonth, sumTransactionAmounts } from '../utils/billing';
+import { summarizeInstallments } from '../utils/installments';
+import CategoryChart from './CategoryChart';
 
 interface DashboardProps {
     transactions: Transaction[];
     budget: number;
     cardBanks: string[];
     cardSettings: Record<string, CardSetting>;
+    selectedMonth: string;
+    onMonthChange: (month: string) => void;
+    onAddExpense: () => void;
+    onOpenReconciliation: () => void;
 }
+type TimeFilter = 'month' | 'year' | 'all';
+interface DetailView { type: 'card' | 'category'; name: string }
+const money = (value: number) => '$' + value.toLocaleString('zh-TW', { maximumFractionDigits: 2 });
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, cardSettings }) => {
-    const [filterType, setFilterType] = useState<'month' | 'year' | 'all'>('month');
-    const [selectedMonth, setSelectedMonth] = useState(formatLocalYearMonth(new Date()));
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, cardSettings, selectedMonth, onMonthChange, onAddExpense, onOpenReconciliation }) => {
+    const [filterType, setFilterType] = useState<TimeFilter>('month');
+    const [selectedYear, setSelectedYear] = useState(selectedMonth.slice(0, 4));
     const [excludeAgency, setExcludeAgency] = useState(true);
+    const [detailView, setDetailView] = useState<DetailView | null>(null);
+    const dialogRef = useRef<HTMLDialogElement>(null);
+    useEffect(() => { setSelectedYear(selectedMonth.slice(0, 4)); }, [selectedMonth]);
+    useEffect(() => {
+        const dialog = dialogRef.current;
+        if (detailView && dialog && !dialog.open) dialog.showModal();
+        if (!detailView && dialog?.open) dialog.close();
+    }, [detailView]);
 
-    // State for the detail popup
-    const [detailView, setDetailView] = useState<{ type: 'card' | 'category', title: string } | null>(null);
+    const availableYears = useMemo(() => Array.from(new Set([selectedMonth.slice(0, 4), ...transactions.map(t => t.date.slice(0, 4))])).sort().reverse(), [transactions, selectedMonth]);
+    const statsTransactions = useMemo(() => transactions.filter(t => {
+        if (filterType === 'month' && !t.date.startsWith(selectedMonth)) return false;
+        if (filterType === 'year' && !t.date.startsWith(selectedYear)) return false;
+        return !excludeAgency || t.category !== '代買';
+    }), [transactions, filterType, selectedMonth, selectedYear, excludeAgency]);
+    const totalExpense = sumTransactionAmounts(statsTransactions);
+    const cashTotal = sumTransactionAmounts(statsTransactions.filter(t => t.paymentMethod === PaymentMethod.CASH));
+    const creditTotal = sumTransactionAmounts(statsTransactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD));
+    const effectiveBudget = filterType === 'year' ? budget * 12 : budget;
+    const budgetPercent = filterType !== 'all' && effectiveBudget > 0 ? Math.round(totalExpense / effectiveBudget * 100) : null;
+    const timeLabel = filterType === 'month' ? selectedMonth : filterType === 'year' ? selectedYear + ' 年' : '全部紀錄';
 
-    const availableYears = useMemo(() => {
-        const years = transactions.map(t => t.date.split('-')[0]);
-        const uniqueYears = Array.from(new Set([new Date().getFullYear().toString(), ...years]));
-        return uniqueYears.sort((a, b) => b.localeCompare(a));
-    }, [transactions]);
-
-    // Primary filter based on time
-    const timeFilteredTransactions = useMemo(() => {
-        return transactions.filter(t => {
-            if (filterType === 'month') return t.date.startsWith(selectedMonth);
-            if (filterType === 'year') return t.date.startsWith(selectedYear);
-            return true;
-        });
-    }, [transactions, filterType, selectedMonth, selectedYear]);
-
-    // Secondary filter for statistics (optionally exclude "代買")
-    const statsTransactions = useMemo(() => {
-        if (!excludeAgency) return timeFilteredTransactions;
-        return timeFilteredTransactions.filter(t => t.category !== '代買');
-    }, [timeFilteredTransactions, excludeAgency]);
-
-    const totalExpense = useMemo(() => statsTransactions.reduce((acc, t) => acc + t.amount, 0), [statsTransactions]);
-
-    const cashTotal = useMemo(() => {
-        return statsTransactions
-            .filter(t => t.paymentMethod === PaymentMethod.CASH)
-            .reduce((sum, t) => sum + t.amount, 0);
-    }, [statsTransactions]);
-
-    const creditCardTotal = useMemo(() => {
-        return statsTransactions
-            .filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD)
-            .reduce((sum, t) => sum + t.amount, 0);
-    }, [statsTransactions]);
-
-    const effectiveBudget = useMemo(() => filterType === 'year' ? budget * 12 : budget, [budget, filterType]);
-    // 預算為 0 時避免 Infinity / NaN
-    const budgetPercent = effectiveBudget > 0 ? Math.round((totalExpense / effectiveBudget) * 100) : 0;
-    const budgetProgress = effectiveBudget > 0 ? Math.min((totalExpense / effectiveBudget) * 100, 100) : 0;
-
-    const cardStatus = useMemo(() => {
-        const cards = cardBanks.filter(c => c !== CardBank.NONE && c !== '-');
-
-        return cards.map(bank => {
-            const allBankTxs = transactions.filter(t => t.cardBank === bank);
-            const setting = cardSettings[bank];
-            const statementDay = setting?.statementDay || 0;
-
-            // 計算未出帳：計算截止至本期帳單結帳日的所有「未核銷」金額
-            // 這包含了本期新增的消費，以及過往所有尚未核銷的消費（自動滾入）
-            const range = getCycleRange(setting, selectedMonth);
-
-            const unbilled = allBankTxs.filter(t => {
-                if (t.isReconciled) return false;
-                if (!range) return true; // 若無設定，顯示所有未核銷
-                return t.date <= range.end;
-            }).reduce((sum, t) => sum + t.amount, 0);
-
-            // 計算已核帳：本期週期內的已核銷金額
-            let billedRecent = 0;
-
-            if (statementDay > 0) {
-                // Priority 1: Use saved statement amount if available
-                // Note: savedAmount is keyed by "Billing Month" (selectedMonth)
-                const savedAmount = setting?.statementAmounts?.[selectedMonth];
-                if (savedAmount !== undefined) {
-                    billedRecent = savedAmount;
-                } else if (range) {
-                    // Priority 2: Calculate from reconciled transactions
-                    billedRecent = allBankTxs
-                        .filter(t => isReconciledInCycle(t, range))
-                        .reduce((sum, t) => sum + t.amount, 0);
-                }
-            } else {
-                // 如果沒有設定結帳日，fallback 到原本邏輯（只顯示當月已核銷）
-                const txs = statsTransactions.filter(t => t.cardBank === bank);
-                billedRecent = txs.filter(t => t.isReconciled).reduce((sum, t) => sum + t.amount, 0);
-            }
-
-            return { bank, unbilled, billedRecent };
-        }).filter(c => c.unbilled > 0 || c.billedRecent > 0);
-    }, [transactions, statsTransactions, cardBanks, cardSettings, selectedMonth]);
-
-    // Installment progress tracking - aggregate all installment transactions
-    const installmentProgress = useMemo(() => {
-        // Helper to check if description looks like an installment (contains N/M pattern)
-        const looksLikeInstallment = (desc: string) => {
-            return /\d+\/\d+/.test(desc);
-        };
-
-        // Get all installment transactions - check BOTH flag AND description pattern
-        // This catches transactions that weren't flagged but have installment-like descriptions
-        const installmentTxs = transactions.filter(t =>
-            t.isInstallment || looksLikeInstallment(t.description)
-        );
-        if (installmentTxs.length === 0) return { items: [], monthlyTotal: 0 };
-
-        // Parse description to extract base name and period info
-        // Supports multiple formats:
-        // - "項目名稱 (N/M)" or "項目名稱(N/M)"
-        // - "項目名稱 (分期N/M)" or "項目名稱(分期N/M)"
-        // - "項目名稱分期N/M"
-        const parseInstallment = (desc: string) => {
-            // Try format: "name (N/M)" or "name(N/M)" or "name (分期N/M)" or "name (分期 N/M)"
-            // Allows optional whitespace inside parentheses and optional "分期" prefix
-            // Supports both half-width () and full-width （） parentheses
-            let match = desc.match(/^(.+?)\s*[(\uff08]\s*(?:分?期?:?\s*)?(\d+)\/(\d+)\s*[)\uff09]$/);
-            if (match) return { baseName: match[1].trim(), current: +match[2], total: +match[3] };
-
-            // Try format: "name分期N/M" (no parentheses)
-            // Allow optional space before "分期"
-            match = desc.match(/^(.+?)\s*分期\s*(\d+)\/(\d+)$/);
-            if (match) return { baseName: match[1].trim(), current: +match[2], total: +match[3] };
-
-            // Try format: "nameN/M" (just numbers at end)
-            match = desc.match(/^(.+?)(\d+)\/(\d+)$/);
-            if (match) return { baseName: match[1].trim(), current: +match[2], total: +match[3] };
-
-            return { baseName: desc, current: 1, total: 1 };
-        };
-
-        // Group by base name
-        const grouped = new Map<string, {
-            transactions: typeof installmentTxs;
-            cardBank: string;
-            totalPeriods: number;
-        }>();
-
-        installmentTxs.forEach(t => {
-            const { baseName, total } = parseInstallment(t.description);
-            if (!grouped.has(baseName)) {
-                grouped.set(baseName, {
-                    transactions: [],
-                    cardBank: t.cardBank,
-                    totalPeriods: total
-                });
-            }
-            grouped.get(baseName)!.transactions.push(t);
-        });
-
-        // Calculate progress for each installment item
-        const items = Array.from(grouped.entries()).map(([name, data]) => {
-            // Sort by date descending (latest first) to easily get the most recent installment info
-            const txs = data.transactions.sort((a, b) => b.date.localeCompare(a.date));
-            const paidTxs = txs.filter(t => t.isReconciled);
-            const totalPeriods = data.totalPeriods;
-
-            // Calculate paid periods robustly
-            // 1. Count actual records (paidTxs.length)
-            // 2. Check the "current" index of reconciled items (e.g. if we have "20/24", that implies 20 are paid)
-            // Use the maximum of these to handle cases where history is missing (e.g. started recording at period 10)
-            const maxCurrentPeriod = paidTxs.reduce((max, t) => {
-                const info = parseInstallment(t.description);
-                return Math.max(max, info.current);
-            }, 0);
-            const paidPeriods = Math.max(paidTxs.length, maxCurrentPeriod);
-
-            const remainingPeriods = Math.max(0, totalPeriods - paidPeriods);
-            const amountPerPeriod = txs[0]?.amount || 0;
-            const totalAmount = amountPerPeriod * totalPeriods;
-            const remainingAmount = amountPerPeriod * remainingPeriods;
-            const progress = totalPeriods > 0 ? Math.round((paidPeriods / totalPeriods) * 100) : 0;
-
-            // Calculate end date based on the LATEST transaction
-            // If latest tx is "20/24" at 2026-01-21, then we have (24-20)=4 months left.
-            // End date = 2026-01 + 4 months = 2026-05.
-            const latestTx = txs[0];
-            const latestInfo = parseInstallment(latestTx.description);
-            const currentPeriod = latestInfo.current || 1; // Fallback to 1 if parsing fails (unlikely here)
-
-            const endDate = new Date(latestTx.date);
-            // Calculate months to add: Total - Current
-            // e.g. Total 24, Current 20 => Add 4 months to current date
-            const monthsRemainingFromCurrent = totalPeriods - currentPeriod;
-            endDate.setMonth(endDate.getMonth() + monthsRemainingFromCurrent);
-
-            const endMonth = formatLocalYearMonth(endDate);
-
-            return {
-                name,
-                cardBank: data.cardBank,
-                totalPeriods,
-                paidPeriods,
-                remainingPeriods,
-                amountPerPeriod,
-                totalAmount,
-                remainingAmount,
-                progress,
-                endMonth,
-                isCompleted: paidPeriods >= totalPeriods
-            };
-        }).filter(item => !item.isCompleted) // Only show ongoing installments
-            .sort((a, b) => a.endMonth.localeCompare(b.endMonth));
-
-        // Calculate current month's installment total
-        const currentMonth = formatLocalYearMonth(new Date());
-        const monthlyTotal = installmentTxs
-            .filter(t => t.date.startsWith(currentMonth))
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        return { items, monthlyTotal };
-    }, [transactions]);
-
-    const categoryData: CategorySummary[] = useMemo(() => {
-        const map = new Map<Category, number>();
-        statsTransactions.forEach(t => {
-            if (t.category !== '信用卡出帳') map.set(t.category, (map.get(t.category) || 0) + t.amount);
-        });
-        return Array.from(map.entries()).map(([name, value]) => ({ name, value, color: getCategoryColor(name) })).sort((a, b) => b.value - a.value);
-    }, [statsTransactions]);
-
-    // Calculate detailed transactions for the selected view
-    const detailedTransactions = useMemo(() => {
-        if (!detailView) return [];
-
-        let source = [];
-        if (detailView.type === 'card') {
-            source = statsTransactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === detailView.title);
-        } else {
-            source = statsTransactions.filter(t => t.category === detailView.title);
+    const cardSummaries = useMemo(() => {
+        const banks = Array.from(new Set([...cardBanks, ...Object.keys(cardSettings), ...transactions.map(t => t.cardBank)])).filter(bank => bank && bank !== '-');
+        return banks.map(bank => ({ bank, ...getStatementSummary(transactions, bank, selectedMonth, cardSettings[bank]), statementAmount: cardSettings[bank]?.statementAmounts?.[selectedMonth] }))
+            .filter(card => card.candidates.length > 0 || card.reconciled.length > 0 || card.unassigned.length > 0 || card.statementAmount !== undefined);
+    }, [transactions, cardBanks, cardSettings, selectedMonth]);
+    const installmentSummary = useMemo(() => summarizeInstallments(transactions, selectedMonth), [transactions, selectedMonth]);
+    const categoryData = useMemo(() => {
+        const categories = new Map<string, Transaction[]>();
+        for (const transaction of statsTransactions) {
+            const records = categories.get(transaction.category) ?? [];
+            records.push(transaction); categories.set(transaction.category, records);
         }
-
-        return source.sort((a, b) => b.amount - a.amount);
-    }, [detailView, statsTransactions]);
+        return Array.from(categories, ([name, records]) => ({ name, value: sumTransactionAmounts(records), count: records.length, color: getCategoryColor(name) })).sort((a, b) => b.value - a.value);
+    }, [statsTransactions]);
+    const canShowProportion = totalExpense > 0 && categoryData.every(category => category.value >= 0);
+    const openCategory = (name: string) => setDetailView({ type: 'category', name });
+    const detailedCard = detailView?.type === 'card' ? cardSummaries.find(card => card.bank === detailView.name) : undefined;
+    const detailedTransactions = detailView?.type === 'category' ? statsTransactions.filter(t => t.category === detailView.name).sort((a, b) => b.amount - a.amount) : [];
+    const renderRecords = (records: Transaction[], emptyText: string) => records.length ? <ul className="divide-y divide-slate-100">{records.map(transaction => <li key={transaction.id} className="flex items-start justify-between gap-3 py-3"><div className="min-w-0"><p className="break-words text-sm font-semibold text-slate-800">{transaction.description}</p><p className="mt-1 text-xs text-slate-500">{transaction.date} · {transaction.category}</p></div><span className="shrink-0 text-sm font-semibold font-number text-slate-900">{money(transaction.amount)}</span></li>)}</ul> : <p className="py-4 text-sm text-slate-500">{emptyText}</p>;
 
     return (
-        <div className="space-y-4 md:space-y-6 animate-fade-in pb-10">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h2 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">財務概覽</h2>
-                    <p className="text-[10px] md:text-xs text-slate-500 font-medium">檢視您的消費分析與預算進度</p>
+        <div className="space-y-5 pb-10 animate-fade-in">
+            <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div><h2 className="text-2xl font-bold text-slate-900">財務概覽</h2><p className="mt-1 text-sm text-slate-600">掌握已記錄消費與預算使用情形。</p></div>
+                <div className="flex w-fit items-center rounded-xl border border-slate-200 bg-white p-1">
+                    <button type="button" aria-label="上個月" onClick={() => onMonthChange(shiftYearMonth(selectedMonth, -1))} className="rounded-lg p-3 hover:bg-slate-100"><ChevronLeft size={18} /></button>
+                    <input type="month" aria-label="共用月份" value={selectedMonth} onChange={event => { if (isYearMonth(event.target.value)) onMonthChange(event.target.value); }} className="w-36 min-w-0 bg-transparent px-2 py-2 text-base font-semibold" />
+                    <button type="button" aria-label="下個月" onClick={() => onMonthChange(shiftYearMonth(selectedMonth, 1))} className="rounded-lg p-3 hover:bg-slate-100"><ChevronRight size={18} /></button>
                 </div>
+            </header>
 
-                <div className="flex flex-wrap gap-2 items-center justify-end w-full sm:w-auto">
-                    {/* Agency Purchase Toggle */}
-                    <button
-                        onClick={() => setExcludeAgency(!excludeAgency)}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] md:text-xs font-black transition-all border ${excludeAgency
-                            ? 'bg-rose-50 text-rose-600 border-rose-100 shadow-sm'
-                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 shadow-sm'
-                            }`}
-                    >
-                        <Filter size={14} className={excludeAgency ? 'text-rose-500' : 'text-slate-400'} />
-                        {excludeAgency ? '排除代買' : '包含代買'}
-                    </button>
-
-                    <div className="flex bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                        <div className="relative border-r border-slate-100">
-                            <select
-                                value={filterType}
-                                onChange={e => setFilterType(e.target.value as any)}
-                                className="bg-slate-50 pl-3 pr-8 py-2 text-[10px] md:text-xs text-slate-700 font-black focus:outline-none appearance-none cursor-pointer h-full"
-                            >
-                                <option value="month">按月</option>
-                                <option value="year">按年</option>
-                                <option value="all">全部</option>
-                            </select>
-                            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                        </div>
-
-                        {filterType === 'month' && (
-                            <div className="relative flex items-center bg-white">
-                                <button
-                                    onClick={() => setSelectedMonth(shiftYearMonth(selectedMonth, -1))}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                    title="上個月"
-                                >
-                                    <ChevronLeft size={16} className="text-slate-500" />
-                                </button>
-                                <input
-                                    type="month"
-                                    value={selectedMonth}
-                                    onChange={e => setSelectedMonth(e.target.value)}
-                                    className="w-[100px] md:w-[130px] px-1 py-2 text-[10px] md:text-xs text-slate-700 font-black focus:outline-none bg-transparent cursor-pointer text-center"
-                                />
-                                <button
-                                    onClick={() => setSelectedMonth(shiftYearMonth(selectedMonth, 1))}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                    title="下個月"
-                                >
-                                    <ChevronRight size={16} className="text-slate-500" />
-                                </button>
-                            </div>
-                        )}
-                        {filterType === 'year' && (
-                            <div className="relative flex items-center bg-white min-w-[80px] md:min-w-[100px]">
-                                <select
-                                    value={selectedYear}
-                                    onChange={e => setSelectedYear(e.target.value)}
-                                    className="w-full pl-3 pr-8 py-2 text-[10px] md:text-xs text-slate-700 font-black focus:outline-none appearance-none cursor-pointer bg-transparent relative z-10"
-                                >
-                                    {availableYears.map(y => <option key={y} value={y}>{y} 年</option>)}
-                                </select>
-                                <Calendar size={14} className="absolute right-3 text-indigo-500 pointer-events-none z-0" />
-                            </div>
-                        )}
-                    </div>
-                </div>
+            <div className="flex flex-col gap-3 rounded-2xl bg-slate-900 p-5 text-white sm:flex-row sm:items-center sm:justify-between">
+                <div><p className="font-semibold">先記一筆，帳務才完整</p><p className="mt-1 text-sm text-slate-300">消費依交易日統計；帳單依已確認月份核對。</p></div>
+                <button type="button" onClick={onAddExpense} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 font-semibold text-slate-900 hover:bg-slate-100"><Plus size={18} />新增支出</button>
             </div>
 
-            {/* Summary Cards: 2 cols on mobile, 4 cols on lg */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-                <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 hover:shadow-lg hover:shadow-indigo-100/50 hover:-translate-y-1 transition-all duration-300 group">
-                    <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
-                        <div className="p-2 md:p-2.5 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform duration-300"><DollarSign size={16} className="md:w-5 md:h-5" /></div>
-                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate font-display">總支出</p>
-                    </div>
-                    <h3 className="text-xl md:text-3xl font-black text-slate-800 font-number tracking-tight">${totalExpense.toLocaleString()}</h3>
-                    <p className="text-[10px] text-slate-400 mt-1 font-bold">預算剩餘: <span className={`font-number ${effectiveBudget - totalExpense < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>${(effectiveBudget - totalExpense).toLocaleString()}</span></p>
-                </div>
-
-                <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 hover:shadow-lg hover:shadow-emerald-100/50 hover:-translate-y-1 transition-all duration-300 group">
-                    <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
-                        <div className="p-2 md:p-2.5 bg-emerald-50 text-emerald-600 rounded-xl group-hover:scale-110 transition-transform duration-300"><Wallet size={16} className="md:w-5 md:h-5" /></div>
-                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate font-display">預算達成率</p>
-                    </div>
-                    <div className="flex justify-between items-end mb-2">
-                        <h3 className="text-xl md:text-3xl font-black text-slate-800 font-number tracking-tight">{budgetPercent}%</h3>
-                        <span className="text-[10px] text-slate-400 font-bold hidden md:inline font-number">目標: ${effectiveBudget.toLocaleString()}</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-1.5 md:h-2 overflow-hidden">
-                        <div className={`h-full transition-all duration-1000 ease-out ${budgetProgress > 90 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${budgetProgress}%` }}></div>
+            <section className="space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="text-lg font-semibold text-slate-800">消費分析 · {timeLabel}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"><input type="checkbox" checked={excludeAgency} onChange={event => setExcludeAgency(event.target.checked)} className="h-4 w-4 rounded text-indigo-600" />排除代買</label>
+                        <select aria-label="消費統計期間" value={filterType} onChange={event => setFilterType(event.target.value as TimeFilter)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><option value="month">按月</option><option value="year">按年</option><option value="all">全部</option></select>
+                        {filterType === 'year' && <select aria-label="統計年度" value={selectedYear} onChange={event => setSelectedYear(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">{availableYears.map(year => <option key={year} value={year}>{year} 年</option>)}</select>}
                     </div>
                 </div>
-
-                <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 hover:shadow-lg hover:shadow-amber-100/50 hover:-translate-y-1 transition-all duration-300 group">
-                    <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
-                        <div className="p-2 md:p-2.5 bg-amber-50 text-amber-600 rounded-xl group-hover:scale-110 transition-transform duration-300"><Banknote size={16} className="md:w-5 md:h-5" /></div>
-                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate font-display">現金支出</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-sm text-slate-600">已記錄支出</p><p className="mt-2 text-2xl font-bold font-number text-slate-900">{statsTransactions.length ? money(totalExpense) : '尚無紀錄'}</p><p className="mt-2 text-xs text-slate-500">{statsTransactions.length} 筆消費 · {excludeAgency ? '排除代買' : '包含代買'}</p></div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="flex items-center gap-2 text-sm text-slate-600"><Wallet size={16} />預算使用率</p><p className="mt-2 text-2xl font-bold font-number text-slate-900">{budgetPercent === null ? filterType === 'all' ? '不適用' : '待設定預算' : budgetPercent + '%'}</p>
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="預算使用率" aria-valuemin={0} aria-valuemax={100} aria-valuenow={budgetPercent === null ? undefined : Math.max(0, Math.min(budgetPercent, 100))}><div className={budgetPercent !== null && budgetPercent > 100 ? 'h-full bg-amber-500' : 'h-full bg-indigo-500'} style={{ width: Math.max(0, Math.min(budgetPercent ?? 0, 100)) + '%' }} /></div>
+                        <p className="mt-2 text-xs text-slate-500">{filterType === 'all' ? '全部紀錄不套用單月預算' : '預算 ' + money(effectiveBudget) + (filterType === 'year' ? '（月預算 × 12）' : '')}</p>
                     </div>
-                    <h3 className="text-xl md:text-3xl font-black text-slate-800 font-number tracking-tight">${cashTotal.toLocaleString()}</h3>
-                    <p className="text-[10px] text-slate-400 mt-1 font-bold">佔總開銷 <span className="font-number">{totalExpense > 0 ? Math.round((cashTotal / totalExpense) * 100) : 0}%</span></p>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="flex items-center gap-2 text-sm text-slate-600"><Banknote size={16} />現金支出</p><p className="mt-2 text-2xl font-bold font-number text-slate-900">{money(cashTotal)}</p><p className="mt-2 text-xs text-slate-500">依所選期間的消費紀錄</p></div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="flex items-center gap-2 text-sm text-slate-600"><CreditCard size={16} />刷卡消費</p><p className="mt-2 text-2xl font-bold font-number text-slate-900">{money(creditTotal)}</p><p className="mt-2 text-xs text-slate-500">與銀行帳單月份分開統計</p></div>
                 </div>
-
-                <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 hover:shadow-lg hover:shadow-purple-100/50 hover:-translate-y-1 transition-all duration-300 group">
-                    <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
-                        <div className="p-2 md:p-2.5 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform duration-300"><CreditCard size={16} className="md:w-5 md:h-5" /></div>
-                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest truncate font-display">刷卡總計</p>
-                    </div>
-                    <h3 className="text-xl md:text-3xl font-black text-slate-800 font-number tracking-tight">${creditCardTotal.toLocaleString()}</h3>
-                    <p className="text-[10px] text-slate-400 mt-1 font-bold">目前已刷金額</p>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                    <h4 className="font-semibold text-slate-800">消費分類</h4>
+                    {categoryData.length ? <div className="mt-4 grid grid-cols-1 items-center gap-6 md:grid-cols-[220px_1fr]">
+                        <CategoryChart categories={categoryData} total={totalExpense} onSelect={openCategory} />
+                        <ul className="min-w-0 space-y-2">{categoryData.map(category => <li key={category.name}><button type="button" onClick={() => openCategory(category.name)} className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left hover:bg-slate-50"><span className="flex min-w-0 items-center gap-3"><span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: category.color }} /><span className="truncate text-sm font-medium text-slate-800">{category.name}<span className="ml-2 text-xs font-normal text-slate-500">{category.count} 筆</span></span></span><span className="shrink-0 text-sm font-semibold font-number text-slate-800">{money(category.value)}{canShowProportion && <span className="ml-2 text-xs font-normal text-slate-500">{Math.round(category.value / totalExpense * 100)}%</span>}</span></button></li>)}</ul>
+                    </div> : <div className="py-10 text-center"><p className="text-sm text-slate-500">此期間尚無符合篩選條件的消費。</p><button type="button" onClick={onAddExpense} className="mt-3 rounded-lg px-4 py-2 text-sm font-semibold text-indigo-700">新增第一筆支出</button></div>}
+                    {categoryData.length > 0 && !canShowProportion && <p className="mt-3 text-xs text-slate-500">含負數或合計非正數，請以分類金額核對，不顯示比例。</p>}
                 </div>
-            </div>
+            </section>
 
-            <div className="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100">
-                <div className="flex items-center gap-3 mb-4 md:mb-6">
-                    <div className="p-2 bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-xl shadow-lg shadow-indigo-200"><TrendingUp size={20} /></div>
-                    <h3 className="text-base md:text-lg font-black text-slate-800">信用卡動態分析</h3>
-                    <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-md ml-auto font-medium">點擊卡片查看明細</span>
-                </div>
-                {/* Credit Card Grid: 2 cols on mobile, 3 cols on lg */}
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-                    {cardStatus.map((c) => (
-                        <div
-                            key={c.bank}
-                            onClick={() => setDetailView({ type: 'card', title: c.bank })}
-                            className="relative overflow-hidden p-4 md:p-5 border border-slate-100 rounded-2xl bg-gradient-to-br from-white to-slate-50 hover:from-indigo-50 hover:to-purple-50 hover:shadow-lg hover:shadow-indigo-100/40 hover:border-indigo-200 cursor-pointer transition-all duration-300 group active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-indigo-500 outline-none"
-                            tabIndex={0}
-                            role="button"
-                            aria-label={`查看 ${c.bank} 詳細資訊`}
-                        >
-                            {/* Card Header */}
-                            <div className="flex justify-between items-center mb-4">
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg shadow-sm">
-                                        <CreditCard size={14} className="text-white" />
-                                    </div>
-                                    <span className="text-sm md:text-base font-black text-slate-800">{c.bank}</span>
-                                </div>
-                                <ArrowRight size={16} className="text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
-                            </div>
+            <section className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-lg font-semibold text-slate-800">帳單概況 · {selectedMonth}</h3><p className="mt-1 text-xs text-slate-500">依各卡帳單月份，包含代買；點卡片可查看相同基準的明細。</p></div><button type="button" onClick={onOpenReconciliation} className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700">前往核對<ArrowRight size={16} /></button></div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{cardSummaries.map(card => <button type="button" key={card.bank} onClick={() => setDetailView({ type: 'card', name: card.bank })} className="rounded-2xl border border-slate-200 bg-white p-5 text-left hover:border-indigo-300 hover:bg-indigo-50/30">
+                    <span className="flex items-center justify-between font-semibold text-slate-900"><span className="flex items-center gap-2"><CreditCard size={18} className="text-indigo-600" />{card.bank}</span><ChevronRight size={18} className="text-slate-400" /></span>
+                    <span className="mt-4 block text-xs text-slate-500">待核對金額</span><span className="mt-1 block text-2xl font-bold font-number text-slate-900">{money(card.candidateTotal)}</span>
+                    <span className="mt-3 block text-xs text-slate-600">本月已核 {money(card.reconciledTotal)} · 銀行帳單 {card.statementAmount === undefined ? '待輸入' : money(card.statementAmount)}</span>
+                    {card.unassigned.length > 0 && <span className="mt-2 block text-xs font-medium text-amber-700">{card.unassigned.length} 筆帳單月份待確認</span>}
+                    {!card.range && <span className="mt-2 block text-xs text-amber-700">結帳日待設定，待核金額含所有未核明細</span>}
+                </button>)}</div>
+                {cardSummaries.length === 0 && <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">此帳單月份尚無已保存帳單或待核紀錄。</p>}
+            </section>
 
-                            {/* 未出帳區塊 - 主要金額 */}
-                            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-3 mb-3 border border-amber-100">
-                                <div className="flex items-center gap-1.5 mb-1">
-                                    <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
-                                    <span className="text-xs font-bold text-amber-600 uppercase tracking-wide">未出帳</span>
-                                </div>
-                                <p className="text-xl md:text-2xl font-black text-slate-800">
-                                    ${c.unbilled.toLocaleString()}
-                                </p>
-                                <p className="text-[10px] text-amber-500 font-medium mt-0.5">預估下期卡費</p>
-                            </div>
+            {(installmentSummary.groups.length > 0 || installmentSummary.unconfirmed.length > 0) && <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h3 className="flex items-center gap-2 text-lg font-semibold text-slate-800"><CalendarClock size={20} className="text-indigo-600" />分期明細</h3><p className="text-sm text-slate-600">{selectedMonth} 已記錄 {money(installmentSummary.monthlyTotal)}</p></div>
+                <p className="mt-2 text-xs leading-relaxed text-slate-500">以明確分期識別與實際明細加總；核對進度不代表繳款進度，缺少明細時不推估剩餘款。</p>
+                <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">{installmentSummary.groups.map(group => <div key={group.id} className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h4 className="break-words font-semibold text-slate-800">{group.name}</h4><p className="mt-1 text-xs text-slate-500">{group.cardBank} · 已記錄 {group.recordedPeriods}/{group.totalPeriods} 期</p></div><span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600">{group.completeSchedule ? '明細完整' : '待補明細'}</span></div>
+                    <dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-slate-500">已記錄總額</dt><dd className="mt-1 font-semibold font-number">{money(group.recordedAmount)}</dd></div><div><dt className="text-xs text-slate-500">未核對明細金額</dt><dd className="mt-1 font-semibold font-number">{money(group.unreconciledAmount)}</dd></div><div><dt className="text-xs text-slate-500">已核對紀錄</dt><dd className="mt-1">{group.reconciledPeriods} 期</dd></div><div><dt className="text-xs text-slate-500">最後一期月份</dt><dd className="mt-1">{group.endMonth ?? '待補資料'}</dd></div></dl>
+                </div>)}</div>
+                {installmentSummary.unconfirmed.length > 0 && <details className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4"><summary className="cursor-pointer text-sm font-semibold text-amber-900">{installmentSummary.unconfirmed.length} 筆分期識別待確認</summary><p className="mt-2 text-xs leading-relaxed text-amber-800">這些舊紀錄或不一致資料未合併為分期計畫，原日期與金額保留。請確認來源後再補充分期識別。</p>{renderRecords(installmentSummary.unconfirmed, '')}</details>}
+            </section>}
 
-                            {/* 已核帳區塊 */}
-                            <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-3 border border-emerald-100">
-                                <div className="flex items-center gap-1.5 mb-1">
-                                    <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
-                                    <span className="text-xs font-bold text-emerald-600 uppercase tracking-wide">本期已核</span>
-                                </div>
-                                <p className="text-lg md:text-xl font-black text-slate-700">
-                                    ${c.billedRecent.toLocaleString()}
-                                </p>
-                                <p className="text-[10px] text-emerald-500 font-medium mt-0.5">已對帳確認</p>
-                            </div>
-
-                            {/* 裝飾背景 */}
-                            <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-gradient-to-br from-indigo-100/30 to-purple-100/30 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Installment Progress Section */}
-            {installmentProgress.items.length > 0 && (
-                <div className="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100">
-                    <div className="flex items-center gap-3 mb-4 md:mb-6">
-                        <div className="p-2 bg-violet-600 text-white rounded-xl"><CalendarClock size={20} /></div>
-                        <h3 className="text-base md:text-lg font-black text-slate-800">分期付款進度</h3>
-                        <div className="ml-auto flex items-center gap-2 bg-violet-50 text-violet-700 px-3 py-1.5 rounded-xl border border-violet-100">
-                            <span className="text-[10px] font-bold uppercase tracking-wide">本月分期總額</span>
-                            <span className="text-sm md:text-base font-black">${installmentProgress.monthlyTotal.toLocaleString()}</span>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-                        {installmentProgress.items.map((item) => (
-                            <div
-                                key={item.name}
-                                className="p-4 md:p-5 border border-slate-100 rounded-xl md:rounded-2xl bg-gradient-to-br from-slate-50/80 to-white hover:shadow-md transition-all"
-                            >
-                                {/* Header: Name & Bank */}
-                                <div className="flex justify-between items-start mb-3">
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="text-sm md:text-base font-black text-slate-800 truncate">{item.name}</h4>
-                                        <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded inline-flex items-center gap-1 mt-1">
-                                            <CreditCard size={10} /> {item.cardBank}
-                                        </span>
-                                    </div>
-                                    <div className="text-right shrink-0 ml-3">
-                                        <span className="text-[10px] font-bold text-slate-400 block">到期月份</span>
-                                        <span className="text-xs md:text-sm font-black text-slate-600">{item.endMonth}</span>
-                                    </div>
-                                </div>
-
-                                {/* Stats Row */}
-                                <div className="grid grid-cols-3 gap-2 mb-3">
-                                    <div className="bg-slate-50 rounded-lg p-2 text-center">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase block">期數</span>
-                                        <span className="text-xs font-black text-slate-700">
-                                            <span className="text-emerald-600">{item.paidPeriods}</span>/{item.totalPeriods}期
-                                        </span>
-                                    </div>
-                                    <div className="bg-slate-50 rounded-lg p-2 text-center">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase block">每期</span>
-                                        <span className="text-xs font-black text-slate-700">${item.amountPerPeriod.toLocaleString()}</span>
-                                    </div>
-                                    <div className="bg-amber-50 rounded-lg p-2 text-center">
-                                        <span className="text-[9px] font-bold text-amber-600 uppercase block">剩餘</span>
-                                        <span className="text-xs font-black text-amber-700">${item.remainingAmount.toLocaleString()}</span>
-                                    </div>
-                                </div>
-
-                                {/* Progress Bar */}
-                                <div className="space-y-1.5">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[10px] font-bold text-slate-400">繳款進度</span>
-                                        <span className="text-xs font-black text-violet-600">{item.progress}%</span>
-                                    </div>
-                                    <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                                        <div
-                                            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-700"
-                                            style={{ width: `${item.progress}%` }}
-                                        />
-                                    </div>
-                                    <div className="flex justify-between text-[9px] font-bold text-slate-400">
-                                        <span>已繳 {item.paidPeriods} 期</span>
-                                        <span>剩餘 {item.remainingPeriods} 期</span>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                <div className="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 h-[320px] md:h-[450px] flex flex-col relative">
-                    <h3 className="text-base md:text-lg font-black text-slate-800 mb-4 md:mb-6 flex items-center gap-2">消費比例圖 <span className="text-[10px] font-normal text-slate-400 bg-slate-100 px-2 py-1 rounded-full">點擊區塊</span></h3>
-                    <div className="w-full flex-1 flex items-center justify-center overflow-hidden">
-                        {categoryData.length > 0 ? (
-                            <svg viewBox="-170 -140 340 280" className="w-full h-full max-w-[450px] max-h-[380px]">
-                                {/* Donut segments with labels */}
-                                {(() => {
-                                    const segments: React.ReactNode[] = [];
-                                    let currentAngle = -90; // Start from top
-                                    const radius = 65;
-                                    const innerRadius = 40;
-
-                                    // Pre-calculate all label positions for collision avoidance
-                                    const labelPositions: { x: number, y: number, textAnchor: string, midRad: number }[] = [];
-                                    let tempAngle = -90;
-                                    categoryData.forEach((item, index) => {
-                                        const percent = item.value / totalExpense;
-                                        const angle = percent * 360;
-                                        const midAngle = tempAngle + angle / 2;
-                                        const midRad = (midAngle * Math.PI) / 180;
-                                        // Stagger radius: alternate between different radii to avoid overlap
-                                        const staggeredRadius = 95 + (index % 3) * 18;
-                                        const labelX = Math.cos(midRad) * staggeredRadius;
-                                        const labelY = Math.sin(midRad) * staggeredRadius;
-                                        const textAnchor = midAngle > -90 && midAngle < 90 ? 'start' : 'end';
-                                        labelPositions.push({ x: labelX, y: labelY, textAnchor, midRad });
-                                        tempAngle += angle;
-                                    });
-
-                                    categoryData.forEach((item, index) => {
-                                        const percent = item.value / totalExpense;
-                                        const angle = percent * 360;
-                                        const startAngle = currentAngle;
-                                        const endAngle = currentAngle + angle;
-                                        const midAngle = startAngle + angle / 2;
-
-                                        // Calculate arc path
-                                        const startRad = (startAngle * Math.PI) / 180;
-                                        const endRad = (endAngle * Math.PI) / 180;
-                                        const midRad = (midAngle * Math.PI) / 180;
-
-                                        const x1 = Math.cos(startRad) * radius;
-                                        const y1 = Math.sin(startRad) * radius;
-                                        const x2 = Math.cos(endRad) * radius;
-                                        const y2 = Math.sin(endRad) * radius;
-                                        const x1i = Math.cos(startRad) * innerRadius;
-                                        const y1i = Math.sin(startRad) * innerRadius;
-                                        const x2i = Math.cos(endRad) * innerRadius;
-                                        const y2i = Math.sin(endRad) * innerRadius;
-
-                                        const largeArcFlag = angle > 180 ? 1 : 0;
-
-                                        const pathData = [
-                                            `M ${x1i} ${y1i}`,
-                                            `L ${x1} ${y1}`,
-                                            `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
-                                            `L ${x2i} ${y2i}`,
-                                            `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${x1i} ${y1i}`,
-                                            'Z'
-                                        ].join(' ');
-
-                                        // Get pre-calculated label position
-                                        const labelPos = labelPositions[index];
-                                        const outerEdgeX = Math.cos(midRad) * (radius + 3);
-                                        const outerEdgeY = Math.sin(midRad) * (radius + 3);
-                                        const displayPercent = Math.round(percent * 100);
-
-                                        segments.push(
-                                            <g key={item.name}>
-                                                <path
-                                                    d={pathData}
-                                                    fill={item.color}
-                                                    className="cursor-pointer transition-all duration-200 hover:opacity-80"
-                                                    style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))' }}
-                                                    onClick={() => setDetailView({ type: 'category', title: item.name })}
-                                                />
-                                                {/* Connecting line */}
-                                                <line
-                                                    x1={outerEdgeX}
-                                                    y1={outerEdgeY}
-                                                    x2={labelPos.x + (labelPos.textAnchor === 'start' ? -3 : 3)}
-                                                    y2={labelPos.y}
-                                                    stroke={item.color}
-                                                    strokeWidth={1}
-                                                    className="pointer-events-none"
-                                                />
-                                                <text
-                                                    x={labelPos.x}
-                                                    y={labelPos.y}
-                                                    textAnchor={labelPos.textAnchor}
-                                                    dominantBaseline="middle"
-                                                    className="text-[8px] md:text-[9px] font-bold pointer-events-none"
-                                                    style={{ fill: item.color }}
-                                                >
-                                                    {item.name} {displayPercent}%
-                                                </text>
-                                            </g>
-                                        );
-
-                                        currentAngle = endAngle;
-                                    });
-
-                                    return segments;
-                                })()}
-                                {/* Center circle with total */}
-                                <circle cx="0" cy="0" r={38} fill="white" />
-                                <text x="0" y="-6" textAnchor="middle" className="text-[7px] fill-slate-400 font-bold">總支出</text>
-                                <text x="0" y="10" textAnchor="middle" className="text-[11px] md:text-[13px] fill-slate-800 font-black">${totalExpense.toLocaleString()}</text>
-                            </svg>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-full animate-fade-in">
-                                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3">
-                                    <PieChartIcon className="text-slate-300" size={32} />
-                                </div>
-                                <p className="text-slate-500 text-sm font-bold">無消費數據</p>
-                                <p className="text-slate-400 text-xs mt-1">本月尚無支出紀錄</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-                {/* Category Ranking: Removed fixed height, removed scrollbar to show all items */}
-                <div className="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 h-auto min-h-[320px] flex flex-col">
-                    <h3 className="text-base md:text-lg font-black text-slate-800 mb-4 md:mb-6 flex items-center gap-2">分類支出排行 <span className="text-[10px] font-normal text-slate-400 bg-slate-100 px-2 py-1 rounded-full">點擊查看明細</span></h3>
-                    <div className="w-full space-y-3">
-                        {categoryData.map(item => (
-                            <div
-                                key={item.name}
-                                onClick={() => setDetailView({ type: 'category', title: item.name })}
-                                className="space-y-1 p-1.5 md:p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors group"
-                            >
-                                <div className="flex justify-between text-xs font-bold">
-                                    <span className="text-slate-700 flex items-center gap-2">
-                                        {item.name}
-                                        <ArrowRight size={10} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    </span>
-                                    <span className="text-slate-800">${item.value.toLocaleString()}</span>
-                                </div>
-                                <div className="w-full bg-slate-100 h-1.5 md:h-2 rounded-full overflow-hidden">
-                                    <div className="h-full rounded-full" style={{ backgroundColor: item.color, width: `${(item.value / totalExpense) * 100}%` }}></div>
-                                </div>
-                            </div>
-                        ))}
-                        {categoryData.length === 0 && (
-                            <div className="flex flex-col items-center justify-center py-10 animate-fade-in">
-                                <div className="p-3 bg-slate-50 rounded-full mb-3">
-                                    <List size={24} className="text-slate-300" />
-                                </div>
-                                <p className="text-slate-400 text-sm font-medium">無相關消費數據</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Detail Modal */}
-            {detailView && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setDetailView(null)}>
-                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <div>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Consumption Details</span>
-                                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                                    {detailView.type === 'card' ? <CreditCard size={20} className="text-indigo-500" /> : <Wallet size={20} className="text-emerald-500" />}
-                                    {detailView.title}
-                                </h3>
-                            </div>
-                            <button onClick={() => setDetailView(null)} className="p-2 bg-white rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors border border-slate-100 shadow-sm">
-                                <X size={18} />
-                            </button>
-                        </div>
-                        <div className="p-2 overflow-y-auto max-h-[60vh] scrollbar-hide">
-                            {detailedTransactions.length > 0 ? (
-                                <div className="space-y-1">
-                                    {detailedTransactions.map((t, idx) => (
-                                        <div key={t.id} className="flex items-center gap-3 p-3 hover:bg-slate-50 rounded-2xl transition-colors border border-transparent hover:border-slate-100">
-                                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-400 text-[10px] shrink-0">
-                                                {idx + 1}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex justify-between items-baseline mb-1">
-                                                    <span className="text-sm font-bold text-slate-800 truncate">{t.description}</span>
-                                                    <span className="text-sm font-black text-indigo-600 shrink-0 ml-2">${t.amount.toLocaleString()}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
-                                                    <span>{t.date}</span>
-                                                    <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                                                    <span className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: getCategoryColor(t.category) }}>{t.category}</span>
-                                                    {t.paymentMethod === PaymentMethod.CREDIT_CARD && (
-                                                        <>
-                                                            <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                                                            <span>{t.cardBank}</span>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-10 text-slate-400 text-sm italic">
-                                    無消費紀錄
-                                </div>
-                            )}
-                        </div>
-                        <div className="p-4 border-t border-slate-100 bg-slate-50/50 text-center">
-                            <button onClick={() => setDetailView(null)} className="text-xs font-bold text-slate-500 hover:text-slate-800">
-                                關閉視窗 (共 {detailedTransactions.length} 筆)
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <dialog ref={dialogRef} aria-labelledby="dashboard-detail-title" onCancel={() => setDetailView(null)} onClose={() => setDetailView(null)} onClick={event => { if (event.target === event.currentTarget) setDetailView(null); }} className="m-auto max-h-[88dvh] overflow-y-auto rounded-2xl border-0 bg-white p-0 shadow-2xl backdrop:bg-slate-900/50" style={{ width: 'min(42rem, calc(100vw - 2rem))' }}>
+                {detailView && <div><div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200 bg-white p-5"><div><h3 id="dashboard-detail-title" className="text-lg font-semibold text-slate-900">{detailView.name} 明細</h3><p className="mt-1 text-sm text-slate-500">{detailView.type === 'card' ? selectedMonth + ' 帳單月份 · 包含代買' : timeLabel + ' · ' + (excludeAgency ? '排除代買' : '包含代買')}</p></div><button type="button" aria-label="關閉明細" onClick={() => setDetailView(null)} className="rounded-lg p-2.5 hover:bg-slate-100"><X size={20} /></button></div>
+                    <div className="px-5 py-2">{detailedCard ? <><h4 className="mt-4 text-sm font-semibold text-slate-800">待核對 · {money(detailedCard.candidateTotal)}</h4>{renderRecords(detailedCard.candidates, '目前沒有待核對明細。')}<h4 className="mt-4 text-sm font-semibold text-slate-800">本月已核對 · {money(detailedCard.reconciledTotal)}</h4>{renderRecords(detailedCard.reconciled, '尚無確認歸屬本月的明細。')}{detailedCard.unassigned.length > 0 && <><h4 className="mt-4 text-sm font-semibold text-amber-800">帳單月份待確認</h4>{renderRecords(detailedCard.unassigned, '')}</>}<button type="button" onClick={() => { setDetailView(null); onOpenReconciliation(); }} className="my-4 w-full rounded-xl bg-indigo-600 px-4 py-3 font-semibold text-white">前往帳單核對</button></> : renderRecords(detailedTransactions, '此期間沒有符合條件的明細。')}</div>
+                </div>}
+            </dialog>
         </div>
     );
 };
-
 export default Dashboard;

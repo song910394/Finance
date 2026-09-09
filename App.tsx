@@ -1,363 +1,176 @@
+import React, { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { AlertCircle, CheckCircle2, Cloud, CreditCard, Download, LayoutDashboard, List, MoreHorizontal, PieChart, RefreshCw, Settings as SettingsIcon, Wallet, X } from 'lucide-react';
+import { CardBank, DEFAULT_CATEGORIES, type FinanceData, type SalaryAdjustment, type Transaction } from './types';
+import { DEFAULT_INCOME_SOURCES, GOOGLE_SCRIPT_URL } from './constants';
+import { createFinanceSync } from './services/financeSync';
+import { serializeBackup } from './utils/backup';
+import { formatLocalDate, formatLocalYearMonth } from './utils/billing';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, List, CreditCard, PieChart, Settings as SettingsIcon, Cloud, CheckCircle2, RefreshCw, AlertCircle, Wallet } from 'lucide-react';
-import TransactionList from './components/TransactionList';
-import Dashboard from './components/Dashboard';
-import Reconciliation from './components/Reconciliation';
-import Settings from './components/Settings';
-import BudgetManager from './components/BudgetManager';
-import SalaryHistory from './components/SalaryHistory';
-import { Transaction, DEFAULT_CATEGORIES, CardBank, CardSetting, IncomeSource, MonthlyBudget, SalaryAdjustment } from './types';
-import { INITIAL_TRANSACTIONS, GOOGLE_SCRIPT_URL, DEFAULT_INCOME_SOURCES } from './constants';
-import { saveToGoogleSheet, loadFromGoogleSheet } from './services/googleSheetService';
-
-enum Tab {
-  DASHBOARD = '概覽',
-  TRANSACTIONS = '記帳',
-  SALARY_HISTORY = '薪資歷程',
-  BUDGET = '帳務',
-  RECONCILIATION = '對帳',
-  SETTINGS = '設定'
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const TransactionList = lazy(() => import('./components/TransactionList'));
+const Reconciliation = lazy(() => import('./components/Reconciliation'));
+const BudgetManager = lazy(() => import('./components/BudgetManager'));
+const SalaryHistory = lazy(() => import('./components/SalaryHistory'));
+const Settings = lazy(() => import('./components/Settings'));
+enum Tab { DASHBOARD = '概覽', TRANSACTIONS = '記帳', RECONCILIATION = '信用卡', BUDGET = '帳務', SALARY = '薪資歷程', SETTINGS = '設定' }
+const initialData = (): FinanceData => ({
+  transactions: [], categories: [...DEFAULT_CATEGORIES], cardBanks: Object.values(CardBank), budget: 50000,
+  cardSettings: {}, incomeSources: DEFAULT_INCOME_SOURCES.map(source => ({ ...source })), budgets: [], salaryAdjustments: [],
+});
+const initialUrl = () => {
+  try { return localStorage.getItem('google_script_url') ?? GOOGLE_SCRIPT_URL; }
+  catch { return GOOGLE_SCRIPT_URL; }
+};
+class PageBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (this.state.failed) return <div role="alert" className="rounded-2xl border border-rose-200 bg-white p-6">
+      <h2 className="text-lg font-bold">這個頁面暫時無法顯示</h2>
+      <p className="mt-2 text-sm text-slate-600">請先使用上方的完整備份保留目前資料，再重新整理。若持續發生，請保留備份供檢查。</p>
+      <button type="button" className="mt-4 rounded-xl bg-indigo-600 px-4 py-3 text-white" onClick={() => location.reload()}>重新整理</button>
+    </div>;
+    return this.props.children;
+  }
 }
-
-type SyncStatus = 'idle' | 'syncing' | 'saved' | 'error';
-
-function App() {
+export default function App() {
+  const [controller] = useState(() => createFinanceSync({ initialData: initialData(), initialUrl: initialUrl() }));
+  const sync = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const data = sync.data;
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DASHBOARD);
-
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
-  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
-  const [cardBanks, setCardBanks] = useState<string[]>(Object.values(CardBank));
-  const [budget, setBudget] = useState<number>(50000);
-  const [cardSettings, setCardSettings] = useState<Record<string, CardSetting>>({});
-  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>(DEFAULT_INCOME_SOURCES);
-  const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
-  const [salaryAdjustments, setSalaryAdjustments] = useState<SalaryAdjustment[]>([]);
-
-  const [googleScriptUrl, setGoogleScriptUrl] = useState(GOOGLE_SCRIPT_URL);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
-  const [lastSyncedTime, setLastSyncedTime] = useState<string>('');
-
-  const isRemoteUpdate = useRef(false);
-  const isFirstMount = useRef(true);
-  // 資料護欄：雲端尚未成功載入前禁止自動存檔，避免預設範例資料覆蓋雲端真實資料
-  const hasCloudLoaded = useRef(false);
-
+  const [selectedMonth, setSelectedMonth] = useState(formatLocalYearMonth(new Date()));
+  const [startAdding, setStartAdding] = useState(0);
+  const [actionError, setActionError] = useState('');
+  const [hasUnsavedForm, setHasUnsavedForm] = useState(false);
+  const moreDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { void controller.start(); return () => controller.stop(); }, [controller]);
   useEffect(() => {
-    const urlToUse = GOOGLE_SCRIPT_URL || localStorage.getItem('google_script_url');
-    if (urlToUse) {
-      setGoogleScriptUrl(urlToUse);
-      if (GOOGLE_SCRIPT_URL) {
-        localStorage.setItem('google_script_url', GOOGLE_SCRIPT_URL);
-      }
-      handleAutoLoad(urlToUse);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isFirstMount.current) {
-      isFirstMount.current = false;
-      return;
-    }
-    if (!googleScriptUrl) return;
-
-    if (isRemoteUpdate.current) {
-      isRemoteUpdate.current = false;
-      return;
-    }
-
-    // 雲端載入尚未成功（或失敗）時不自動存檔，維持 error 狀態提示使用者
-    if (!hasCloudLoaded.current) return;
-
-    setSyncStatus('syncing');
-
-    const timer = setTimeout(async () => {
-      try {
-        await saveToGoogleSheet(googleScriptUrl, {
-          transactions,
-          categories,
-          budget,
-          cardBanks,
-          cardSettings,
-          incomeSources,
-          budgets,
-          salaryAdjustments
-        });
-        setSyncStatus('saved');
-        setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      } catch (error) {
-        console.error("Auto-save failed", error);
-        setSyncStatus('error');
-      }
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [transactions, categories, budget, cardBanks, cardSettings, incomeSources, budgets, salaryAdjustments, googleScriptUrl]);
-
-  const handleAutoLoad = async (url: string): Promise<boolean> => {
-    setSyncStatus('syncing');
-    try {
-      const data = await loadFromGoogleSheet(url);
-      if (data) {
-        isRemoteUpdate.current = true;
-        if (data.transactions) setTransactions(data.transactions);
-        if (data.categories) setCategories(data.categories);
-        if (typeof data.budget === 'number') setBudget(data.budget);
-        if (data.cardBanks) setCardBanks(data.cardBanks);
-        if (data.cardSettings) setCardSettings(data.cardSettings);
-        if (data.incomeSources) setIncomeSources(data.incomeSources);
-        if (data.budgets) setBudgets(data.budgets);
-        if (data.salaryAdjustments) setSalaryAdjustments(data.salaryAdjustments);
-
-        setSyncStatus('saved');
-        setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      } else {
-        setSyncStatus('idle');
-      }
-      // 載入成功（含雲端尚無資料的情況）才允許之後的自動存檔
-      hasCloudLoaded.current = true;
-      return true;
-    } catch (error) {
-      console.error("Auto-load failed", error);
-      setSyncStatus('error');
-      return false;
-    }
-  };
-
-  const addTransaction = (newTx: Omit<Transaction, 'id'>) => {
-    const transaction: Transaction = {
-      ...newTx,
-      id: crypto.randomUUID()
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      if (hasUnsavedForm || (sync.dirty && !sync.localSaved)) { event.preventDefault(); event.returnValue = ''; }
     };
-    setTransactions(prev => [transaction, ...prev]);
+    window.addEventListener('beforeunload', warnUnsaved);
+    return () => window.removeEventListener('beforeunload', warnUnsaved);
+  }, [sync.dirty, sync.localSaved, hasUnsavedForm]);
+  const setField = <K extends keyof FinanceData>(field: K, value: React.SetStateAction<FinanceData[K]>) => {
+    controller.update(previous => ({ ...previous, [field]: typeof value === 'function'
+      ? (value as (old: FinanceData[K]) => FinanceData[K])(previous[field]) : value }));
   };
-
-  const addTransactions = (newTxs: Omit<Transaction, 'id'>[], newCats?: string[], newBanks?: string[]) => {
-    if (newCats && newCats.length > 0) {
-      setCategories(prev => Array.from(new Set([...prev, ...newCats])));
-    }
-    if (newBanks && newBanks.length > 0) {
-      setCardBanks(prev => Array.from(new Set([...prev, ...newBanks])));
-    }
-    const transactionsToAdd = newTxs.map(tx => ({
-      ...tx,
-      id: crypto.randomUUID()
-    }));
-    setTransactions(prev => [...transactionsToAdd, ...prev]);
-  };
-
-  const editTransaction = (id: string, updatedTx: Omit<Transaction, 'id'>) => {
-    setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updatedTx } : t));
-  };
-
-  const deleteTransaction = (id: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== id));
-  };
-
-  // 刪除固定支出組：刪除指定 groupId 且日期 >= fromDate 的所有交易
-  const deleteRecurringGroup = (groupId: string, fromDate: string) => {
-    setTransactions(prev => prev.filter(t =>
-      !(t.recurringGroupId === groupId && t.date >= fromDate)
-    ));
-  };
-
-  const toggleReconcile = (id: string) => {
-    setTransactions(prev => prev.map(t => {
-      if (t.id !== id) return t;
-      const newStatus = !t.isReconciled;
-      return {
-        ...t,
-        isReconciled: newStatus,
-        reconciledDate: newStatus ? new Date().toISOString() : undefined
-      };
+  const addTransaction = (value: Omit<Transaction, 'id'>) => setField('transactions', previous => [{ ...value, id: crypto.randomUUID() }, ...previous]);
+  const addTransactions = (values: Omit<Transaction, 'id'>[], categories: string[] = [], banks: string[] = []) => controller.update(previous => ({
+    ...previous, transactions: [...values.map(value => ({ ...value, id: crypto.randomUUID() })), ...previous.transactions],
+    categories: Array.from(new Set([...previous.categories, ...categories])), cardBanks: Array.from(new Set([...previous.cardBanks, ...banks])),
+  }));
+  const editTransaction = (id: string, value: Omit<Transaction, 'id'>) => setField('transactions', previous => previous.map(tx => tx.id === id ? { ...tx, ...value } : tx));
+  const deleteTransaction = (id: string) => setField('transactions', previous => previous.filter(tx => tx.id !== id));
+  const deleteRecurringGroup = (groupId: string, fromDate: string) => setField('transactions', previous => previous.filter(tx => !(tx.recurringGroupId === groupId && tx.date >= fromDate)));
+  const reconcileTransaction = (id: string, statementMonth: string | null) => {
+    if (statementMonth !== null && !/^\d{4}-(0[1-9]|1[0-2])$/.test(statementMonth)) return;
+    setField('transactions', previous => previous.map(tx => tx.id !== id ? tx : {
+      ...tx, isReconciled: statementMonth !== null, statementMonth: statementMonth ?? undefined,
+      reconciledDate: statementMonth === null ? undefined : tx.reconciledDate ?? new Date().toISOString(),
     }));
   };
-
-  const addSalaryAdjustment = (adjustment: Omit<SalaryAdjustment, 'id'>) => {
-    const newAdj = { ...adjustment, id: crypto.randomUUID() };
-    setSalaryAdjustments(prev => [...prev, newAdj]);
+  const addSalaryAdjustment = (value: Omit<SalaryAdjustment, 'id'>) => setField('salaryAdjustments', previous => [...previous, { ...value, id: crypto.randomUUID() }]);
+  const editSalaryAdjustment = (id: string, value: Omit<SalaryAdjustment, 'id'>) => setField('salaryAdjustments', previous => previous.map(item => item.id === id ? { ...item, ...value } : item));
+  const deleteSalaryAdjustment = (id: string) => setField('salaryAdjustments', previous => previous.filter(item => item.id !== id));
+  const runAction = async (action: () => Promise<void>) => {
+    if (hasUnsavedForm && !window.confirm('此頁有尚未儲存的輸入，繼續同步可能重新載入頁面。要放棄這些輸入嗎？')) return;
+    setActionError('');
+    try { await action(); } catch (error) { setActionError(error instanceof Error ? error.message : '操作未完成，請重試'); }
   };
-
-  const deleteSalaryAdjustment = (id: string) => {
-    setSalaryAdjustments(prev => prev.filter(t => t.id !== id));
+  const downloadBackup = () => {
+    try {
+      const objectUrl = URL.createObjectURL(new Blob([serializeBackup(data)], { type: 'application/json;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = objectUrl; link.download = 'H-and-S-完整備份-' + formatLocalDate(new Date()) + '.json';
+      link.click(); setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (error) { setActionError(error instanceof Error ? error.message : '無法建立備份'); }
   };
-
-
-  const resetData = () => {
-    setTransactions([]);
-    setCategories(DEFAULT_CATEGORIES);
-    setCardBanks(Object.values(CardBank));
-    setBudget(50000);
-    setCardSettings({});
-    setIncomeSources(DEFAULT_INCOME_SOURCES);
-    setBudgets([]);
-    setSalaryAdjustments([]);
+  const navigate = (tab: Tab) => {
+    if (tab !== activeTab && hasUnsavedForm && !window.confirm('此頁有尚未儲存的輸入。要放棄這些輸入並離開嗎？')) return;
+    moreDialog.current?.close(); setStartAdding(0); setActiveTab(tab);
   };
-
-  const handleSettingsSync = async (url: string, isUpload: boolean) => {
-    setGoogleScriptUrl(url);
-    if (isUpload) {
-      await saveToGoogleSheet(url, { transactions, categories, budget, cardBanks, cardSettings, incomeSources, budgets, salaryAdjustments });
-      // 使用者明確選擇以本機資料覆蓋雲端，之後允許自動存檔
-      hasCloudLoaded.current = true;
-      setSyncStatus('saved');
-      setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    } else {
-      const ok = await handleAutoLoad(url);
-      // 讓 Settings 端的 try/catch 能正確顯示「還原失敗」而不是誤報成功
-      if (!ok) throw new Error('Load from cloud failed');
-    }
-  };
-
-  const renderSyncIcon = () => {
-    if (!googleScriptUrl) return <span className="text-gray-300"><Cloud size={16} /></span>;
-    if (syncStatus === 'syncing') return <RefreshCw size={16} className="animate-spin text-blue-500" />;
-    if (syncStatus === 'saved') return <CheckCircle2 size={16} className="text-green-500" />;
-    if (syncStatus === 'error') return <AlertCircle size={16} className="text-red-500" />;
-    return <Cloud size={16} className="text-gray-400" />;
-  };
-
-  return (
-    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-[#f8fafc] font-sans">
-      <aside className="hidden lg:flex w-64 bg-white border-r border-gray-100 flex-col h-full shrink-0 z-20">
-        <div className="p-6 border-b border-gray-50 flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-blue-200 shadow-lg">
-            <PieChart size={20} />
-          </div>
-          <h1 className="text-xl font-extrabold text-gray-800 tracking-tight">H&S記帳</h1>
+  const openAddExpense = () => { setStartAdding(token => token + 1); setActiveTab(Tab.TRANSACTIONS); };
+  const loading = sync.status === 'loading';
+  const busy = loading || sync.status === 'syncing';
+  const lastTime = sync.lastSyncedAt ? new Date(sync.lastSyncedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+  const statusText = hasUnsavedForm ? '此頁有未儲存內容' : loading ? '正在載入帳本' : sync.status === 'conflict' ? '需要確認資料版本'
+    : sync.status === 'error' ? (sync.localSaved ? '已存本機・同步失敗' : '資料尚未安全保存')
+    : sync.status === 'saved' && !sync.dirty ? '已同步 ' + lastTime
+    : sync.status === 'syncing' ? (sync.localSaved ? '已存本機・同步中' : '同步中・本機未保存')
+    : sync.localSaved ? (sync.dirty && sync.url ? '已存本機・等待同步' : '已存本機') : '尚未連線';
+  const syncIcon = busy ? <RefreshCw size={16} className="animate-spin" /> : sync.status === 'error' || sync.conflict ? <AlertCircle size={16} />
+    : sync.status === 'saved' && !sync.dirty ? <CheckCircle2 size={16} /> : <Cloud size={16} />;
+  const monthProps = { selectedMonth, onMonthChange: setSelectedMonth };
+  const navItems = [
+    { tab: Tab.DASHBOARD, icon: <LayoutDashboard size={20} /> }, { tab: Tab.TRANSACTIONS, icon: <List size={20} /> },
+    { tab: Tab.RECONCILIATION, icon: <CreditCard size={20} /> }, { tab: Tab.BUDGET, icon: <PieChart size={20} /> },
+    { tab: Tab.SALARY, icon: <Wallet size={20} /> }, { tab: Tab.SETTINGS, icon: <SettingsIcon size={20} /> },
+  ];
+  return <div className="flex h-dvh min-h-0 overflow-hidden bg-slate-50 font-sans text-slate-800">
+    <a href="#main-content" className="sr-only z-[100] bg-white p-3 focus:not-sr-only focus:fixed">跳到主要內容</a>
+    <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
+      <div className="flex items-center gap-3 border-b border-slate-100 p-6"><span className="rounded-xl bg-indigo-600 p-2 text-white"><PieChart size={22} /></span><h1 className="text-xl font-bold">H&S記帳</h1></div>
+      <nav aria-label="主要導覽" className="flex-1 space-y-1 p-4">{navItems.map(item => <button key={item.tab} type="button" onClick={() => navigate(item.tab)} aria-current={activeTab === item.tab ? 'page' : undefined}
+        className={'flex min-h-12 w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors ' + (activeTab === item.tab ? 'bg-indigo-50 font-bold text-indigo-700' : 'text-slate-600 hover:bg-slate-50')}>{item.icon}{item.tab}</button>)}</nav>
+      <p className="border-t border-slate-100 p-4 text-xs text-slate-500">H&S記帳 v{__APP_VERSION__}</p>
+    </aside>
+    <div className="flex min-w-0 flex-1 flex-col">
+      <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2 lg:px-8">
+        <div className="flex items-center gap-2 font-bold"><PieChart size={20} className="text-indigo-600 lg:hidden" /><span className="lg:hidden">H&S記帳</span><span className="hidden lg:inline">{activeTab}</span></div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span role="status" aria-live="polite" className={'flex items-center gap-1.5 rounded-full px-3 py-2 text-xs ' + (sync.status === 'error' || sync.conflict ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600')}>{syncIcon}{statusText}</span>
+          <button type="button" aria-label="匯出完整備份" title="匯出完整備份" onClick={downloadBackup} disabled={loading} className="touch-target rounded-xl border border-slate-200 bg-white p-2 hover:bg-slate-50 disabled:opacity-50"><Download size={18} /></button>
         </div>
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <NavItem icon={<LayoutDashboard size={20} />} label={Tab.DASHBOARD} isActive={activeTab === Tab.DASHBOARD} onClick={() => setActiveTab(Tab.DASHBOARD)} />
-          <NavItem icon={<List size={20} />} label={Tab.TRANSACTIONS} isActive={activeTab === Tab.TRANSACTIONS} onClick={() => setActiveTab(Tab.TRANSACTIONS)} />
-          <NavItem icon={<Wallet size={20} />} label={Tab.SALARY_HISTORY} isActive={activeTab === Tab.SALARY_HISTORY} onClick={() => setActiveTab(Tab.SALARY_HISTORY)} />
-          <NavItem icon={<CreditCard size={20} />} label={Tab.RECONCILIATION} isActive={activeTab === Tab.RECONCILIATION} onClick={() => setActiveTab(Tab.RECONCILIATION)} />
-          <NavItem icon={<PieChart size={20} />} label={Tab.BUDGET} isActive={activeTab === Tab.BUDGET} onClick={() => setActiveTab(Tab.BUDGET)} />
-          <div className="pt-4 mt-4 border-t border-gray-50">
-            <NavItem icon={<SettingsIcon size={20} />} label={Tab.SETTINGS} isActive={activeTab === Tab.SETTINGS} onClick={() => setActiveTab(Tab.SETTINGS)} />
-          </div>
-        </nav>
-        <div className="p-4 bg-slate-50 border-t border-slate-100">
-          <div className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-1">
-            {renderSyncIcon()}
-            <span className="font-number">
-              {syncStatus === 'saved' ? `已同步 ${lastSyncedTime}` :
-                syncStatus === 'syncing' ? '同步中...' :
-                  syncStatus === 'error' ? '同步失敗' : '未連線'}
-            </span>
-          </div>
-          <p className="text-[10px] text-slate-400 mt-2 font-display">© 2024 H&S記帳 v{__APP_VERSION__}</p>
-        </div>
-      </aside>
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-        <header className="lg:hidden bg-white border-b border-gray-100 px-4 py-3 flex justify-between items-center z-10 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white">
-              <PieChart size={16} />
+      </header>
+      <main id="main-content" className="min-h-0 flex-1 overflow-y-auto" tabIndex={-1}>
+        <div className="app-content mx-auto max-w-7xl space-y-4 p-4 md:p-6 lg:p-8">
+          {sync.conflict && <section role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+            <h2 className="font-bold">{sync.conflict === 'tab' ? '另一個分頁已更新帳本' : '本機與雲端有不同版本'}</h2>
+            <p className="mt-2">自動上傳已暫停。目前本機有 {data.transactions.length} 筆交易。請先匯出完整備份，再選擇要保留的版本；兩個版本不會自動合併。</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={downloadBackup} className="rounded-xl border border-amber-300 bg-white px-4 py-3">匯出本機備份</button>
+              <button type="button" onClick={() => void runAction(() => controller.resolveConflict('local'))} className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white">以本機版本覆蓋雲端</button>
+              <button type="button" onClick={() => void runAction(() => controller.resolveConflict('cloud'))} className="rounded-xl border border-amber-300 bg-white px-4 py-3">以雲端版本取代本機</button>
             </div>
-            <h1 className="text-lg font-bold text-gray-800">H&S記帳</h1>
-          </div>
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100 shadow-sm">
-            {renderSyncIcon()}
-            {syncStatus === 'saved' && <span className="text-[10px] text-slate-500 font-number">{lastSyncedTime}</span>}
-          </div>
-        </header>
-        <main className="flex-1 overflow-y-auto scrollbar-hide bg-[#f8fafc]">
-          <div className="p-4 pb-28 md:p-8 md:pb-8 max-w-7xl mx-auto">
-            {activeTab === Tab.DASHBOARD && <Dashboard transactions={transactions} budget={budget} cardBanks={cardBanks} cardSettings={cardSettings} />}
-            {activeTab === Tab.TRANSACTIONS && (
-              <TransactionList
-                transactions={transactions}
-                categories={categories}
-                cardBanks={cardBanks}
-                onAddTransaction={addTransaction}
-                onAddTransactions={addTransactions}
-                onEditTransaction={editTransaction}
-                onDeleteTransaction={deleteTransaction}
-                onToggleReconcile={toggleReconcile}
-              />
-            )}
-            {activeTab === Tab.SALARY_HISTORY && (
-              <SalaryHistory
-                adjustments={salaryAdjustments}
-                onAddAdjustment={addSalaryAdjustment}
-                onDeleteAdjustment={deleteSalaryAdjustment}
-              />
-            )}
-            {activeTab === Tab.RECONCILIATION && (
-              <Reconciliation
-                transactions={transactions}
-                cardBanks={cardBanks}
-                cardSettings={cardSettings}
-                onToggleReconcile={toggleReconcile}
-                onAddTransaction={addTransaction}
-                onUpdateCardSettings={setCardSettings}
-              />
-            )}
-            {activeTab === Tab.BUDGET && (
-              <BudgetManager
-                transactions={transactions}
-                cardBanks={cardBanks}
-                cardSettings={cardSettings}
-                incomeSources={incomeSources}
-                budgets={budgets}
-                onUpdateIncomeSources={setIncomeSources}
-                onUpdateBudgets={setBudgets}
-              />
-            )}
-            {activeTab === Tab.SETTINGS && (
-              <Settings
-                categories={categories}
-                budget={budget}
-                cardBanks={cardBanks}
-                cardSettings={cardSettings}
-                onUpdateCategories={setCategories}
-                onUpdateBudget={setBudget}
-                onUpdateCardBanks={setCardBanks}
-                onUpdateCardSettings={setCardSettings}
-                onCloudSync={handleSettingsSync}
-                onResetData={resetData}
-              />
-            )}
-          </div>
-        </main>
-        <nav className="lg:hidden bg-white/90 backdrop-blur-md border-t border-gray-200 fixed bottom-0 w-full z-50 pb-safe">
-          <div className="grid grid-cols-5 h-16">
-            <MobileNavItem icon={<LayoutDashboard size={20} />} label={Tab.DASHBOARD} isActive={activeTab === Tab.DASHBOARD} onClick={() => setActiveTab(Tab.DASHBOARD)} />
-            <MobileNavItem icon={<List size={20} />} label={Tab.TRANSACTIONS} isActive={activeTab === Tab.TRANSACTIONS} onClick={() => setActiveTab(Tab.TRANSACTIONS)} />
-            <MobileNavItem icon={<Wallet size={20} />} label="薪資" isActive={activeTab === Tab.SALARY_HISTORY} onClick={() => setActiveTab(Tab.SALARY_HISTORY)} />
-            <MobileNavItem icon={<CreditCard size={20} />} label="對帳" isActive={activeTab === Tab.RECONCILIATION} onClick={() => setActiveTab(Tab.RECONCILIATION)} />
-            <MobileNavItem icon={<PieChart size={20} />} label="帳務" isActive={activeTab === Tab.BUDGET} onClick={() => setActiveTab(Tab.BUDGET)} />
-            <MobileNavItem icon={<SettingsIcon size={20} />} label={Tab.SETTINGS} isActive={activeTab === Tab.SETTINGS} onClick={() => setActiveTab(Tab.SETTINGS)} />
-          </div>
-        </nav>
-      </div>
+          </section>}
+          {sync.recoveries.length > 0 && <details open={sync.recoveries.some(item => !item.reviewed)} className="rounded-2xl border border-amber-200 bg-white p-4 text-sm">
+            <summary className="cursor-pointer font-bold">其他本機草稿（{sync.recoveries.length} 個版本）</summary>
+            <p className="mt-2 text-slate-600">這些草稿來自目前帳本的分頁衝突。選取後會暫停自動上傳，請檢查內容、匯出備份，再選擇要保留的版本。</p>
+            <ul className="mt-3 space-y-2">{sync.recoveries.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3">
+              <span>{item.savedAt ? new Date(item.savedAt).toLocaleString('zh-TW', { hour12: false }) : '時間待確認'} · {item.transactionCount} 筆交易 · {item.reviewed ? '已處理，保留備份' : '待確認'}</span>
+              <button type="button" disabled={busy} onClick={() => void runAction(async () => { controller.selectRecovery(item.id); })} className="rounded-xl border border-slate-200 bg-white px-4 py-3 font-bold text-indigo-700 disabled:opacity-50">檢視此草稿</button>
+            </li>)}</ul>
+          </details>}
+          {(sync.status === 'error' || actionError) && <section role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+            <p>{actionError || sync.error || '同步尚未完成，請確認連線後重試。'}</p>
+            <p className="mt-1">{sync.localSaved ? '本機資料已保留。' : '請先匯出完整備份，避免離開頁面後遺失資料。'}</p>
+            <div className="mt-3 flex gap-2"><button type="button" disabled={busy || Boolean(sync.conflict)} onClick={() => void runAction(() => controller.retry())} className="rounded-xl border border-rose-200 bg-white px-4 py-2 disabled:opacity-50">重試同步</button><button type="button" onClick={() => navigate(Tab.SETTINGS)} className="rounded-xl px-4 py-2 underline">檢查連線設定</button></div>
+          </section>}
+          {loading ? <div role="status" className="rounded-2xl border border-slate-200 bg-white p-8 text-center"><RefreshCw className="mx-auto mb-3 animate-spin text-indigo-600" />正在載入帳本，完成後即可開始記帳。</div> :
+            <PageBoundary key={activeTab}><Suspense fallback={<p role="status" className="p-6 text-slate-500">正在開啟頁面…</p>}>
+              {activeTab === Tab.DASHBOARD && <Dashboard {...monthProps} transactions={data.transactions} budget={data.budget} cardBanks={data.cardBanks} cardSettings={data.cardSettings} onAddExpense={openAddExpense} onOpenReconciliation={() => navigate(Tab.RECONCILIATION)} />}
+              {activeTab === Tab.TRANSACTIONS && <TransactionList {...monthProps} transactions={data.transactions} categories={data.categories} cardBanks={data.cardBanks} onAddTransaction={addTransaction} onAddTransactions={addTransactions} onEditTransaction={editTransaction} onDeleteTransaction={deleteTransaction} onDeleteRecurringGroup={deleteRecurringGroup} onToggleReconcile={id => reconcileTransaction(id, null)} startAdding={startAdding} />}
+              {activeTab === Tab.RECONCILIATION && <Reconciliation {...monthProps} transactions={data.transactions} cardBanks={data.cardBanks} cardSettings={data.cardSettings} onReconcile={reconcileTransaction} onUpdateCardSettings={value => setField('cardSettings', value)} onDirtyChange={setHasUnsavedForm} />}
+              {activeTab === Tab.BUDGET && <BudgetManager {...monthProps} transactions={data.transactions} cardBanks={data.cardBanks} cardSettings={data.cardSettings} incomeSources={data.incomeSources} budgets={data.budgets} onUpdateIncomeSources={value => setField('incomeSources', value)} onUpdateBudgets={value => setField('budgets', value)} onDirtyChange={setHasUnsavedForm} />}
+              {activeTab === Tab.SALARY && <SalaryHistory adjustments={data.salaryAdjustments} onAddAdjustment={addSalaryAdjustment} onEditAdjustment={editSalaryAdjustment} onDeleteAdjustment={deleteSalaryAdjustment} />}
+              {activeTab === Tab.SETTINGS && <Settings categories={data.categories} budget={data.budget} cardBanks={data.cardBanks} cardSettings={data.cardSettings} onUpdateCategories={value => setField('categories', value)} onUpdateBudget={value => setField('budget', value)} onUpdateCardBanks={value => setField('cardBanks', value)} onUpdateCardSettings={value => setField('cardSettings', value)} onCloudSync={(url, upload) => controller.sync(url, upload)} onResetData={() => controller.update(() => initialData())} currentScriptUrl={sync.url} syncStatus={sync.status} onExportBackup={downloadBackup} onImportBackup={value => controller.update(() => value)} />}
+            </Suspense></PageBoundary>}
+        </div>
+      </main>
+      <nav aria-label="手機導覽" className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden">
+        <div className="grid grid-cols-5">{navItems.slice(0, 4).map(item => <MobileNav key={item.tab} label={item.tab} icon={item.icon} active={activeTab === item.tab} onClick={() => navigate(item.tab)} />)}
+          <MobileNav label="更多" icon={<MoreHorizontal size={21} />} active={activeTab === Tab.SALARY || activeTab === Tab.SETTINGS} onClick={() => moreDialog.current?.showModal()} />
+        </div>
+      </nav>
+      <dialog ref={moreDialog} aria-labelledby="more-title" className="m-auto w-[calc(100%_-_2rem)] max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+        <div className="mb-3 flex items-center justify-between"><h2 id="more-title" className="text-lg font-bold">更多功能</h2><button type="button" onClick={() => moreDialog.current?.close()} aria-label="關閉更多功能" className="touch-target rounded-xl"><X size={20} /></button></div>
+        <button type="button" onClick={() => navigate(Tab.SALARY)} className="flex w-full items-center gap-3 rounded-xl px-4 py-4 hover:bg-indigo-50"><Wallet size={20} />薪資歷程</button>
+        <button type="button" onClick={() => navigate(Tab.SETTINGS)} className="flex w-full items-center gap-3 rounded-xl px-4 py-4 hover:bg-indigo-50"><SettingsIcon size={20} />設定與備份</button>
+      </dialog>
     </div>
-  );
+  </div>;
 }
-
-const NavItem = ({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) => (
-  <button
-    onClick={onClick}
-    className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl transition-all duration-300 group outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${isActive
-      ? 'bg-indigo-50 text-indigo-600 font-bold shadow-sm translate-x-1'
-      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 hover:translate-x-1'
-      }`}
-    aria-label={label}
-  >
-    <span className={`transition-colors duration-300 ${isActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-600'}`}>{icon}</span>
-    <span>{label}</span>
-  </button>
-);
-
-const MobileNavItem = ({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) => (
-  <button
-    onClick={onClick}
-    className="flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform touch-target outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg"
-    aria-label={label}
-  >
-    <div className={`p-2 rounded-xl transition-all duration-300 ${isActive ? 'text-indigo-600 bg-indigo-50 shadow-sm -translate-y-1' : 'text-slate-400'}`}>{icon}</div>
-    <span className={`text-[10px] font-medium transition-colors duration-300 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>{label}</span>
-  </button>
-);
-
-export default App;
+function MobileNav({ label, icon, active, onClick }: { label: string; icon: React.ReactNode; active: boolean; onClick: () => void }) {
+  return <button type="button" aria-current={active ? 'page' : undefined} onClick={onClick} className={'flex min-h-[72px] flex-col items-center justify-center gap-1 px-1 py-2 text-xs ' + (active ? 'font-bold text-indigo-700' : 'text-slate-600')}><span className={'rounded-xl px-3 py-1.5 ' + (active ? 'bg-indigo-50' : '')}>{icon}</span><span>{label}</span></button>;
+}

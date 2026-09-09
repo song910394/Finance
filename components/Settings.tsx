@@ -1,300 +1,124 @@
-
-import React, { useState, useEffect } from 'react';
-import { Plus, X, Save, CloudDownload, CloudUpload, HelpCircle, AlertTriangle, CheckCircle2, Copy, Trash2, ExternalLink, RefreshCw, Calendar } from 'lucide-react';
-import { GOOGLE_SCRIPT_URL } from '../constants';
-import { CardSetting } from '../types';
+import React, { useEffect, useRef, useState } from 'react';
+import { CloudDownload, CloudUpload, Download, Plus, Save, Settings as SettingsIcon, Trash2, Upload, X } from 'lucide-react';
+import type { CardSetting, FinanceData } from '../types';
+import { parseBackup } from '../utils/backup';
 
 interface SettingsProps {
-  categories: string[];
-  budget: number;
-  cardBanks: string[];
-  cardSettings: Record<string, CardSetting>;
-  onUpdateCategories: (newCategories: string[]) => void;
-  onUpdateBudget: (newBudget: number) => void;
-  onUpdateCardBanks: (newCardBanks: string[]) => void;
-  onUpdateCardSettings: (newSettings: Record<string, CardSetting>) => void;
-  onCloudSync: (url: string, isUpload: boolean) => Promise<void>;
-  onResetData: () => void;
+  categories: string[]; budget: number; cardBanks: string[]; cardSettings: Record<string, CardSetting>;
+  onUpdateCategories: (value: string[]) => void; onUpdateBudget: (value: number) => void;
+  onUpdateCardBanks: (value: string[]) => void; onUpdateCardSettings: (value: Record<string, CardSetting>) => void;
+  onCloudSync: (url: string, upload: boolean) => Promise<void>; onResetData: () => void;
+  currentScriptUrl: string; syncStatus: string; onExportBackup: () => void; onImportBackup: (value: FinanceData) => void;
 }
+const inputClass = 'min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200';
+const buttonClass = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50';
+type Action = 'upload' | 'download' | 'reset' | 'import' | null;
 
-const Settings: React.FC<SettingsProps> = ({
-  categories, budget, cardBanks, cardSettings,
-  onUpdateCategories, onUpdateBudget, onUpdateCardBanks, onUpdateCardSettings,
-  onCloudSync, onResetData
-}) => {
+export default function Settings(props: SettingsProps) {
+  const { categories, budget, cardBanks, cardSettings } = props;
+  const [scriptUrl, setScriptUrl] = useState(props.currentScriptUrl);
+  const [tempBudget, setTempBudget] = useState(String(budget));
   const [newCategory, setNewCategory] = useState('');
   const [newBank, setNewBank] = useState('');
-  const [tempBudget, setTempBudget] = useState(budget.toString());
-  const [isBudgetSaved, setIsBudgetSaved] = useState(false);
-  const [scriptUrl, setScriptUrl] = useState('');
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
-  const [showHelp, setShowHelp] = useState(false);
-  const [confirmReset, setConfirmReset] = useState(false);
-
-  useEffect(() => {
-    const savedUrl = GOOGLE_SCRIPT_URL || localStorage.getItem('google_script_url');
-    if (savedUrl) setScriptUrl(savedUrl);
-  }, []);
-
-  const handleAddCategory = () => {
-    if (newCategory && !categories.includes(newCategory)) {
-      onUpdateCategories([...categories, newCategory]);
-      setNewCategory('');
-    }
-  };
-
-  const handleAddBank = () => {
-    if (newBank && !cardBanks.includes(newBank)) {
-      onUpdateCardBanks([...cardBanks, newBank]);
-      setNewBank('');
-    }
-  };
-
-  const handleUpdateStatementDay = (bank: string, day: string) => {
-    const dayVal = parseInt(day);
-    if (!isNaN(dayVal)) {
-      const existing = cardSettings[bank] || {};
-      onUpdateCardSettings({
-        ...cardSettings,
-        [bank]: { ...existing, statementDay: dayVal }
-      });
-    }
-  };
-
-  const handleToggleNextMonth = (bank: string) => {
-    const existing = cardSettings[bank] || { statementDay: 0 };
-    onUpdateCardSettings({
-      ...cardSettings,
-      [bank]: { ...existing, isNextMonth: !existing.isNextMonth }
-    });
-  };
-
-  const handleSaveBudget = () => {
-    const val = parseInt(tempBudget);
-    if (!isNaN(val) && val > 0) {
-      onUpdateBudget(val);
-      setIsBudgetSaved(true);
-      setTimeout(() => setIsBudgetSaved(false), 2000);
-    }
-  };
-
-  const handleSync = async (isUpload: boolean) => {
-    if (!scriptUrl) {
-      setSyncStatus({ type: 'error', msg: '請先輸入 Apps Script 網址' });
-      return;
-    }
-    localStorage.setItem('google_script_url', scriptUrl);
-    setIsSyncing(true);
-    setSyncStatus(null);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [action, setAction] = useState<Action>(null);
+  const [backup, setBackup] = useState<FinanceData | null>(null);
+  const [working, setWorking] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  useEffect(() => setScriptUrl(props.currentScriptUrl), [props.currentScriptUrl]);
+  useEffect(() => setTempBudget(String(budget)), [budget]);
+  useEffect(() => { if (action) dialog.current?.showModal(); else dialog.current?.close(); }, [action]);
+  const busy = working || props.syncStatus === 'loading' || props.syncStatus === 'syncing';
+  const close = () => { dialog.current?.close(); setAction(null); };
+  const requestCloud = (value: 'upload' | 'download') => {
+    setMessage(''); setError('');
     try {
-      await onCloudSync(scriptUrl, isUpload);
-      setSyncStatus({ type: 'success', msg: isUpload ? '同步成功！已為您匯出交易明細表。' : '下載成功！已同步雲端資料。' });
-    } catch (error) {
-      setSyncStatus({ type: 'error', msg: '同步失敗，請檢查網址、權限或重新部署腳本。' });
-    } finally {
-      setIsSyncing(false);
-    }
+      const url = new URL(scriptUrl.trim());
+      if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) throw new Error();
+      setAction(value);
+    } catch { setError('請輸入完整的 HTTPS Apps Script 網址。'); }
   };
-
-  const copyScript = () => {
-    // (Omitted script code for brevity, same as V5)
-    alert("腳本程式碼已複製");
+  const runConfirmed = async () => {
+    const selectedAction = action;
+    if (!selectedAction) return;
+    close(); setMessage(''); setError(''); setWorking(true);
+    try {
+      if (selectedAction === 'reset') { props.onResetData(); setMessage('帳本已清空並重設，保存進度請見上方狀態。'); }
+      else if (selectedAction === 'import' && backup) { props.onImportBackup(backup); setBackup(null); setMessage('備份已載入目前帳本，保存進度請見上方狀態。'); }
+      else if (selectedAction === 'upload' || selectedAction === 'download') {
+        await props.onCloudSync(scriptUrl.trim(), selectedAction === 'upload');
+        setMessage('請依畫面上方的同步狀態確認結果；若版本不同，請先選擇要保留的資料。');
+      }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '操作未完成，請重試。'); }
+    finally { setWorking(false); }
   };
-
-  return (
-    <div className="max-w-2xl mx-auto space-y-8 animate-fade-in pb-12">
-      {/* Cloud Sync Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6 hover:shadow-lg transition-shadow duration-300">
-        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2 font-display">
-          <CloudUpload size={20} className="text-blue-600" />
-          Google 試算表同步 (V5)
-        </h3>
-        <div className="space-y-4">
-          <div className="relative">
-            <input
-              type="text"
-              value={scriptUrl}
-              onChange={(e) => setScriptUrl(e.target.value)}
-              placeholder="https://script.google.com/..."
-              className="w-full p-3 border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono transition-all outline-none"
-              aria-label="Apps Script URL"
-            />
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => handleSync(true)}
-              disabled={isSyncing}
-              className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] touch-target"
-            >
-              {isSyncing ? <RefreshCw className="animate-spin" size={18} /> : <CloudUpload size={18} />}
-              立即備份至雲端
-            </button>
-            <button
-              onClick={() => handleSync(false)}
-              disabled={isSyncing}
-              className="flex-1 py-3 px-4 bg-white border-2 border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center gap-2 hover:-translate-y-0.5 active:scale-[0.98] touch-target"
-            >
-              <CloudDownload size={18} />
-              從雲端還原
-            </button>
-          </div>
-          {syncStatus && (
-            <div className={`p-3 rounded-xl text-sm font-bold animate-fade-in flex items-center gap-2 ${syncStatus.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'}`}>
-              {syncStatus.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-              {syncStatus.msg}
-            </div>
-          )}
-        </div>
+  const readBackup = async (file: File | undefined) => {
+    if (!file) return;
+    setError(''); setMessage('');
+    try {
+      if (file.size > 20 * 1024 * 1024) throw new Error('備份超過 20 MB，請先確認檔案內容。');
+      setBackup(parseBackup(await file.text())); setAction('import');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '備份無法讀取，未變更目前帳本。'); }
+    finally { if (fileInput.current) fileInput.current.value = ''; }
+  };
+  const saveBudget = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (tempBudget.trim() === '' || !/^\d+(\.\d+)?$/.test(tempBudget.trim()) || !Number.isFinite(Number(tempBudget))) { setError('請輸入有效的非負預算金額；0 代表不設定可用預算。'); return; }
+    props.onUpdateBudget(Number(tempBudget)); setError(''); setMessage('預算已更新，保存進度請見上方狀態。');
+  };
+  const updateCard = (bank: string, value: Partial<CardSetting>) => props.onUpdateCardSettings({ ...cardSettings, [bank]: { ...(cardSettings[bank] ?? { statementDay: 0 }), ...value } });
+  return <div className="mx-auto max-w-3xl space-y-6">
+    <div><h2 className="flex items-center gap-2 text-2xl font-bold"><SettingsIcon className="text-indigo-600" />設定與備份</h2><p className="mt-2 text-sm text-slate-600">管理帳本連線、完整備份與記帳選項。</p></div>
+    {message && <p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">{message}</p>}
+    {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}
+    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
+      <h3 className="text-lg font-bold">Google 試算表連線</h3>
+      <p className="text-sm leading-relaxed text-slate-600">變更網址不會立即切換帳本。從雲端還原成功後，才會啟用新連線；有本機草稿時會先請你確認版本。</p>
+      <label htmlFor="script-url" className="block text-sm font-medium">Apps Script 網址</label>
+      <input id="script-url" type="url" value={scriptUrl} onChange={event => setScriptUrl(event.target.value)} className={inputClass} placeholder="https://script.google.com/…" autoComplete="off" spellCheck={false} />
+      <div className="flex flex-wrap gap-3">
+        <button type="button" className={buttonClass} disabled={busy} onClick={() => requestCloud('download')}><CloudDownload size={18} />從雲端還原</button>
+        <button type="button" className={buttonClass} disabled={busy || props.syncStatus === 'conflict'} onClick={() => requestCloud('upload')}><CloudUpload size={18} />以上傳資料更新雲端</button>
       </div>
-
-      {/* Credit Card Settings Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:shadow-lg transition-shadow duration-300">
-        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2 font-display">
-          <Calendar size={20} className="text-blue-600" />
-          信用卡帳單日設定
-        </h3>
-        <p className="text-xs text-slate-500 mb-6">設定每張卡的每月結帳日，系統將自動區分「本期預估應繳」與「未來分期金額」。</p>
-
-        <div className="space-y-4">
-          {cardBanks.filter(b => b !== '-' && b !== '其他').map(bank => {
-            const setting = cardSettings[bank];
-            const isNextMonth = setting?.isNextMonth || false;
-            const statementDay = setting?.statementDay || 0;
-            return (
-              <div key={bank} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 hover:bg-white hover:shadow-md transition-all group">
-                <div className="flex flex-col">
-                  <span className="font-bold text-slate-700">{bank} 信用卡</span>
-                  <span className="text-[10px] text-slate-400">
-                    目前設定: {isNextMonth ? '次月' : '當月'} <span className="font-number">{statementDay || '--'}</span> 日結帳
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 cursor-pointer p-2 hover:bg-slate-100 rounded-lg transition-colors touch-target">
-                    <input
-                      type="checkbox"
-                      checked={isNextMonth}
-                      onChange={() => handleToggleNextMonth(bank)}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 border-slate-300"
-                    />
-                    <span className="text-xs text-slate-500 font-medium">次月結帳</span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-slate-500 font-medium">結帳日:</label>
-                    <select
-                      value={statementDay || ""}
-                      onChange={(e) => handleUpdateStatementDay(bank, e.target.value)}
-                      className="p-2 border border-slate-200 rounded-lg text-sm bg-white font-bold text-blue-600 focus:ring-2 focus:ring-blue-500 outline-none font-number cursor-pointer hover:border-blue-300 transition-colors"
-                      aria-label={`${bank} 結帳日`}
-                    >
-                      <option value="">未設定</option>
-                      {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-                        <option key={day} value={day}>{day} 日</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="mt-6 flex gap-2">
-          <input
-            type="text"
-            placeholder="新增銀行名稱..."
-            value={newBank}
-            onChange={(e) => setNewBank(e.target.value)}
-            className="flex-1 p-3 border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-            onKeyDown={(e) => e.key === 'Enter' && handleAddBank()}
-          />
-          <button
-            onClick={handleAddBank}
-            disabled={!newBank}
-            className="px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 touch-target transition-all hover:shadow-md active:scale-95"
-            aria-label="新增銀行"
-          >
-            <Plus size={24} />
-          </button>
-        </div>
+    </section>
+    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
+      <h3 className="text-lg font-bold">完整帳本備份</h3>
+      <p className="text-sm text-slate-600">JSON 備份包含交易、卡片設定、月度帳務、入帳來源與薪資歷程。Excel 匯出僅包含交易明細。</p>
+      <div className="flex flex-wrap gap-3">
+        <button type="button" className={buttonClass} onClick={props.onExportBackup}><Download size={18} />匯出完整備份</button>
+        <button type="button" className={buttonClass} onClick={() => fileInput.current?.click()} disabled={busy}><Upload size={18} />匯入完整備份</button>
+        <input ref={fileInput} type="file" accept=".json,application/json" className="hidden" onChange={event => void readBackup(event.target.files?.[0])} aria-label="選擇完整備份檔案" />
       </div>
-
-      {/* Category Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:shadow-lg transition-shadow duration-300">
-        <h3 className="text-lg font-bold text-slate-800 mb-4 font-display">預算與類別管理</h3>
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-bold text-slate-600 mb-1">每月目標預算</label>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                value={tempBudget}
-                onChange={(e) => setTempBudget(e.target.value)}
-                className="flex-1 p-3 border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold font-number"
-              />
-              <button
-                onClick={handleSaveBudget}
-                className={`px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all touch-target ${isBudgetSaved ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
-              >
-                {isBudgetSaved ? <CheckCircle2 size={18} /> : <Save size={18} />}
-                {isBudgetSaved ? '已儲存' : '儲存'}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-slate-600 mb-2">消費類別</label>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {categories.map(cat => (
-                <div key={cat} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg hover:bg-white hover:shadow-sm transition-all group">
-                  <span className="text-sm font-medium text-slate-700">{cat}</span>
-                  <button
-                    onClick={() => onUpdateCategories(categories.filter(c => c !== cat))}
-                    className="text-slate-400 hover:text-rose-500 p-1 rounded-md hover:bg-rose-50 transition-colors"
-                    aria-label={`刪除 ${cat}`}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="新類別..."
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                className="flex-1 p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
-              />
-              <button
-                onClick={handleAddCategory}
-                className="px-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors touch-target"
-                aria-label="新增類別"
-              >
-                <Plus size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
+    </section>
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
+      <h3 className="mb-4 text-lg font-bold">每月消費預算</h3>
+      <form onSubmit={saveBudget} className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm font-medium">預算金額<input type="number" min="0" step="0.01" required value={tempBudget} onChange={event => setTempBudget(event.target.value)} className={inputClass + ' mt-2'} /></label><button type="submit" className={buttonClass}><Save size={18} />儲存預算</button></form>
+      <p className="mt-3 text-sm text-slate-500">用於概覽的消費預算使用率；月度帳務中的入帳與貸款另行管理。</p>
+    </section>
+    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
+      <h3 className="text-lg font-bold">信用卡與帳單週期</h3>
+      {cardBanks.filter(bank => bank !== '-').map(bank => <div key={bank} className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:grid-cols-[1fr_1fr]">
+        <h4 className="font-bold sm:col-span-2">{bank}</h4>
+        <label className="text-sm">結帳日<select aria-label={bank + '結帳日'} value={cardSettings[bank]?.statementDay || ''} onChange={event => updateCard(bank, { statementDay: event.target.value ? Number(event.target.value) : 0 })} className={inputClass + ' mt-2'}><option value="">未設定</option>{Array.from({ length: 31 }, (_, index) => index + 1).map(day => <option key={day} value={day}>{day} 日</option>)}</select></label>
+        <label className="flex min-h-11 items-center gap-3 self-end text-sm"><input type="checkbox" className="h-5 w-5 accent-indigo-600" checked={cardSettings[bank]?.isNextMonth ?? ((cardSettings[bank]?.statementDay ?? 15) < 15)} onChange={event => updateCard(bank, { isNextMonth: event.target.checked })} />帳單於次月結帳</label>
+      </div>)}
+      <form onSubmit={event => { event.preventDefault(); const name = newBank.trim(); if (name && !cardBanks.includes(name)) { props.onUpdateCardBanks([...cardBanks, name]); setNewBank(''); } }} className="flex gap-3"><input aria-label="新增信用卡名稱" value={newBank} onChange={event => setNewBank(event.target.value)} placeholder="新增信用卡名稱" className={inputClass} /><button type="submit" className={buttonClass} disabled={!newBank.trim() || cardBanks.includes(newBank.trim())}><Plus size={18} />新增</button></form>
+    </section>
+    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
+      <h3 className="text-lg font-bold">消費分類</h3>
+      <p className="text-sm text-slate-600">移除分類選項會保留既有交易的分類紀錄。</p>
+      <div className="flex flex-wrap gap-2">{categories.map(category => <span key={category} className="inline-flex items-center rounded-xl bg-slate-100 pl-3 text-sm">{category}<button type="button" aria-label={'移除分類選項 ' + category} className="touch-target ml-1 rounded-xl text-slate-500 hover:bg-rose-50 hover:text-rose-700" onClick={() => { if (window.confirm('移除「' + category + '」分類選項？既有交易將保留原分類。')) props.onUpdateCategories(categories.filter(value => value !== category)); }}><X size={16} /></button></span>)}</div>
+      <form onSubmit={event => { event.preventDefault(); const name = newCategory.trim(); if (name && !categories.includes(name)) { props.onUpdateCategories([...categories, name]); setNewCategory(''); } }} className="flex gap-3"><input aria-label="新增消費分類" value={newCategory} onChange={event => setNewCategory(event.target.value)} placeholder="新增消費分類" className={inputClass} /><button type="submit" className={buttonClass} disabled={!newCategory.trim() || categories.includes(newCategory.trim())}><Plus size={18} />新增</button></form>
+    </section>
+    <section className="rounded-2xl border border-rose-200 bg-white p-5 md:p-6"><h3 className="font-bold text-rose-800">重設帳本</h3><p className="my-3 text-sm text-slate-600">清空交易、月度帳務與薪資紀錄，並重設記帳選項。連線恢復後，清空結果也會同步到雲端，請先匯出完整備份。</p><button type="button" className={buttonClass + ' text-rose-700'} onClick={() => setAction('reset')} disabled={busy || props.syncStatus === 'conflict'}><Trash2 size={18} />清空並重設帳本</button></section>
+    <dialog ref={dialog} onClose={() => setAction(null)} aria-labelledby="settings-confirm-title" className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+      <div className="flex items-center justify-between gap-3"><h3 id="settings-confirm-title" className="text-lg font-bold">{action === 'import' ? '確認還原完整備份' : action === 'reset' ? '確認清空帳本' : action === 'upload' ? '確認更新雲端資料' : '確認從雲端還原'}</h3><button type="button" aria-label="關閉確認視窗" onClick={close} className="touch-target rounded-xl"><X size={20} /></button></div>
+      <div className="my-5 space-y-3 text-sm leading-relaxed text-slate-600">
+        {action === 'import' && backup ? <><p>此備份包含 {backup.transactions.length} 筆交易、{backup.budgets.length} 個月份的帳務及 {backup.salaryAdjustments.length} 筆薪資紀錄。</p><p>確認後會取代目前帳本，並依目前連線設定排入同步。請先匯出目前版本。</p></> : action === 'reset' ? <p>目前交易、月度帳務與薪資紀錄將清空，記帳選項將重設；此結果會排入雲端同步。</p> : <><p>{action === 'upload' ? '將使用目前完整帳本更新下方網址的雲端資料。若雲端有不同版本，可能被取代。' : '將讀取下方網址的帳本。有未同步的本機草稿時會先暫停，讓你選擇要保留的版本。'}</p><p className="break-all rounded-xl bg-slate-50 p-3 font-mono text-xs">{scriptUrl.trim()}</p></>}
       </div>
-
-      <div className="bg-rose-50 rounded-2xl shadow-sm border border-rose-100 p-6 hover:shadow-lg hover:shadow-rose-100/50 transition-all duration-300">
-        <h3 className="text-lg font-bold text-rose-700 mb-4 flex items-center gap-2 font-display"><AlertTriangle size={20} /> 危險區域</h3>
-        <div className="flex justify-between items-center">
-          <p className="text-xs text-rose-600 font-medium">重置所有資料後將無法復原，請確保您有先導出備份。</p>
-          {confirmReset ? (
-            <div className="flex gap-2 animate-fade-in">
-              <button onClick={() => setConfirmReset(false)} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 touch-target">取消</button>
-              <button onClick={() => { onResetData(); setConfirmReset(false); }} className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-black shadow-sm hover:bg-rose-700 touch-target">確定重置</button>
-            </div>
-          ) : (
-            <button onClick={() => setConfirmReset(true)} className="px-3 py-1.5 bg-white border border-rose-200 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-50 transition-colors touch-target">重置資料</button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default Settings;
+      <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={props.onExportBackup} className={buttonClass}>先匯出備份</button><button type="button" onClick={close} className={buttonClass}>取消</button><button type="button" onClick={() => void runConfirmed()} className="min-h-11 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">確認{action === 'reset' ? '清空' : action === 'import' ? '還原' : action === 'upload' ? '上傳' : '下載'}</button></div>
+    </dialog>
+  </div>;
+}

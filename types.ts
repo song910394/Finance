@@ -36,9 +36,13 @@ export interface Transaction {
   description: string;
   isReconciled: boolean;
   reconciledDate?: string; // ISO String
+  statementMonth?: string; // YYYY-MM，由使用者指定的唯一帳單歸屬；舊資料缺值時待確認
   isRecurring?: boolean;
   isInstallment?: boolean;
   recurringGroupId?: string; // 用於關聯同一組固定支出的交易
+  installmentGroupId?: string;
+  installmentNumber?: number;
+  installmentCount?: number;
 }
 
 export interface CategorySummary {
@@ -66,9 +70,12 @@ export interface BackupData {
   salaryAdjustments?: SalaryAdjustment[];
 }
 
+// 載入邊界正規化後，所有集合都存在；原始紀錄欄位仍完整保留。
+export type FinanceData = Required<BackupData>;
+
 export interface SalaryAdjustment {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM 生效月份，兼容既有 YYYY-MM-DD
   totalSalary: number; // 調整後總薪資
   adjustmentItem: string; // 調整項目
   adjustmentAmount: number; // 調整金額
@@ -86,6 +93,7 @@ export interface IncomeSource {
   id: string;
   name: string; // 姑姑給、媽媽給、薪水入帳...
   defaultDay?: number; // 預設入帳日
+  isActive?: boolean; // 未填代表啟用；停用仍保留歷史資料
 }
 
 // 月度預算資料

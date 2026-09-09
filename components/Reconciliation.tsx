@@ -1,375 +1,147 @@
-
-import React, { useState, useMemo, useEffect } from 'react';
-import { Transaction, PaymentMethod, CardBank, CardSetting } from '../types';
-import { CheckCircle2, Calculator, X, ChevronRight, Timer, CreditCard, Calendar, RefreshCw, CheckSquare, ShieldCheck } from 'lucide-react';
-import { getCycleRange as getCycleRangeForSetting, isReconciledInCycle, formatLocalYearMonth } from '../utils/billing';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, CreditCard, Info, Save, X } from 'lucide-react';
+import { Transaction, CardSetting } from '../types';
+import { getStatementDifference, getStatementSummary, isYearMonth, shiftYearMonth, sumTransactionAmounts } from '../utils/billing';
 
 interface ReconciliationProps {
     transactions: Transaction[];
     cardSettings: Record<string, CardSetting>;
-    onToggleReconcile: (id: string) => void;
-    onAddTransaction: (t: Omit<Transaction, 'id'>) => void;
-    onUpdateCardSettings: (newSettings: Record<string, CardSetting>) => void;
     cardBanks: string[];
+    selectedMonth: string;
+    onMonthChange: (month: string) => void;
+    onReconcile: (id: string, statementMonth: string | null) => void;
+    onUpdateCardSettings: (settings: Record<string, CardSetting>) => void;
+    onDirtyChange?: (dirty: boolean) => void;
 }
+type DetailKind = 'candidates' | 'reconciled' | 'unassigned' | 'future';
+const money = (value: number) => '$' + value.toLocaleString('zh-TW', { maximumFractionDigits: 2 });
+const amountText = (value: number | undefined) => value === undefined ? '' : String(value);
+const detailLabels: Record<DetailKind, string> = { candidates: '待核對', reconciled: '本月已核對', unassigned: '帳單月份待確認', future: '後續明細' };
 
-const Reconciliation: React.FC<ReconciliationProps> = ({ transactions, cardSettings, onToggleReconcile, cardBanks, onUpdateCardSettings }) => {
-    const [selectedBank, setSelectedBank] = useState<string>('-');
-    const [statementTotal, setStatementTotal] = useState<string>('');
-    const [selectedStatementMonth, setSelectedStatementMonth] = useState(formatLocalYearMonth(new Date()));
-    const [selectedCardDetail, setSelectedCardDetail] = useState<string | null>(null);
+const Reconciliation: React.FC<ReconciliationProps> = ({
+    transactions, cardSettings, cardBanks, selectedMonth, onMonthChange, onReconcile, onUpdateCardSettings, onDirtyChange,
+}) => {
+    const [selectedBank, setSelectedBank] = useState('-');
+    const [statementTotal, setStatementTotal] = useState('');
+    const [notice, setNotice] = useState('');
+    const [listKind, setListKind] = useState<DetailKind>('candidates');
+    const [detailBank, setDetailBank] = useState<string | null>(null);
+    const [detailKind, setDetailKind] = useState<DetailKind>('candidates');
+    const dialogRef = useRef<HTMLDialogElement>(null);
+    const setting = cardSettings[selectedBank];
+    const savedAmount = setting?.statementAmounts?.[selectedMonth];
+    const issued = setting?.issuedMonths?.includes(selectedMonth) ?? false;
+    const dirty = statementTotal !== amountText(savedAmount);
+    const enteredAmount = statementTotal.trim() !== '' && Number.isFinite(Number(statementTotal)) ? Number(statementTotal) : undefined;
+    const availableBanks = useMemo(() => Array.from(new Set([...cardBanks, ...Object.keys(cardSettings), ...transactions.map(t => t.cardBank)])).filter(bank => bank && bank !== '-'), [cardBanks, cardSettings, transactions]);
+    const summary = useMemo(() => getStatementSummary(transactions, selectedBank, selectedMonth, setting), [transactions, selectedBank, selectedMonth, setting]);
+    const difference = getStatementDifference(enteredAmount, summary.knownDetailTotal);
+    const complete = !!summary.range && difference === 0 && !dirty && savedAmount !== undefined && summary.candidates.length === 0 && summary.unassigned.length === 0;
+    const cardSummaries = useMemo(() => availableBanks.map(bank => ({
+        bank, ...getStatementSummary(transactions, bank, selectedMonth, cardSettings[bank]),
+        statementAmount: cardSettings[bank]?.statementAmounts?.[selectedMonth],
+    })), [availableBanks, transactions, selectedMonth, cardSettings]);
+    const detailSummary = detailBank ? getStatementSummary(transactions, detailBank, selectedMonth, cardSettings[detailBank]) : null;
 
     useEffect(() => {
-        const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelectedCardDetail(null); };
-        window.addEventListener('keydown', handleKey);
-        return () => window.removeEventListener('keydown', handleKey);
+        onDirtyChange?.(dirty);
+        return () => onDirtyChange?.(false);
+    }, [dirty, onDirtyChange]);
 
-    }, []);
-
-    // Load saved statement amount when bank or month changes
+    useEffect(() => { setStatementTotal(amountText(savedAmount)); }, [selectedBank, selectedMonth, savedAmount]);
+    useEffect(() => { setNotice(''); setListKind('candidates'); }, [selectedBank, selectedMonth]);
     useEffect(() => {
-        if (selectedBank === '-' || !selectedStatementMonth) {
-            setStatementTotal('');
-            return;
+        const dialog = dialogRef.current;
+        if (detailBank && dialog && !dialog.open) dialog.showModal();
+        if (!detailBank && dialog?.open) dialog.close();
+    }, [detailBank]);
+
+    const saveStatement = (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        if (selectedBank === '-' || enteredAmount === undefined) { setNotice('請選擇卡別並輸入帳單金額，零元帳單請明確填 0。'); return; }
+        if (!setting || !summary.range) { setNotice('請先到設定填寫此卡結帳日，再儲存帳單金額。'); return; }
+        try {
+            onUpdateCardSettings({ ...cardSettings, [selectedBank]: { ...setting, statementAmounts: { ...setting.statementAmounts, [selectedMonth]: enteredAmount } } });
+            setStatementTotal(String(enteredAmount));
+            setNotice('帳單金額已更新；核結狀態保持原設定，保存狀態請見上方。');
+        } catch (error) {
+            setNotice(error instanceof Error ? '未儲存：' + error.message : '帳單金額未儲存，請檢查輸入。');
         }
-        const setting = cardSettings[selectedBank];
-        const savedAmount = setting?.statementAmounts?.[selectedStatementMonth];
-        if (savedAmount !== undefined) {
-            setStatementTotal(savedAmount.toString());
-        } else {
-            setStatementTotal('');
+    };
+    const toggleIssued = () => {
+        if (!setting) return;
+        try {
+            onUpdateCardSettings({ ...cardSettings, [selectedBank]: { ...setting, issuedMonths: issued ? (setting.issuedMonths ?? []).filter(month => month !== selectedMonth) : [...(setting.issuedMonths ?? []), selectedMonth] } });
+            setNotice(issued ? '已取消人工核結標記。' : '已標記帳單核結；此標記不會代替逐筆核對。');
+        } catch (error) {
+            setNotice(error instanceof Error ? error.message : '核結標記未更新。');
         }
-    }, [selectedBank, selectedStatementMonth, cardSettings]);
-
-    // 週期計算單一來源：utils/billing.ts（含次月結帳設定、短月份截尾、本地時區處理）
-    const getCycleRange = (bank: string, yearMonth: string) =>
-        getCycleRangeForSetting(cardSettings[bank], yearMonth);
-
-    const isMonthIssued = (bank: string, month: string) => {
-        return cardSettings[bank]?.issuedMonths?.includes(month) || false;
     };
-
-    const handleToggleIssued = () => {
-        if (selectedBank === '-' || !selectedStatementMonth) return;
-        const current = cardSettings[selectedBank] || { statementDay: 15 };
-        const issued = current.issuedMonths || [];
-        const isCurrentlyIssued = issued.includes(selectedStatementMonth);
-
-        let newIssued = issued;
-        let newStatementAmounts = current.statementAmounts || {};
-
-        if (isCurrentlyIssued) {
-            // Uncheck: Remove from issued list
-            newIssued = issued.filter(m => m !== selectedStatementMonth);
-            // Optional: We can keep the amount or remove it. Let's keep it for convenience if they re-check.
-        } else {
-            // Check: Add to issued list AND save the current amount
-            newIssued = [...issued, selectedStatementMonth];
-            const amount = parseFloat(statementTotal);
-            if (!isNaN(amount)) {
-                newStatementAmounts = {
-                    ...newStatementAmounts,
-                    [selectedStatementMonth]: amount
-                };
-            }
-        }
-
-        onUpdateCardSettings({
-            ...cardSettings,
-            [selectedBank]: {
-                ...current,
-                issuedMonths: newIssued,
-                statementAmounts: newStatementAmounts
-            }
-        });
+    const changeContext = (action: () => void) => {
+        if (dirty && !window.confirm('帳單金額尚未儲存，確定要離開目前帳單？')) return;
+        action();
     };
-
-    // Logic: Current Bill List (Main View)
-    // Includes:
-    // 1. Transactions strictly within the current cycle.
-    // 2. AND Transactions from PREVIOUS cycles that are NOT YET RECONCILED (Late postings/delayed charges).
-    // Formula: !isReconciled AND date <= Cycle End Date
-    const candidateTransactions = useMemo(() => {
-        if (selectedBank === '-') return [];
-        const range = getCycleRange(selectedBank, selectedStatementMonth);
-
-        return transactions.filter(t => {
-            if (t.cardBank !== selectedBank || t.isReconciled) return false;
-            if (!range) return true; // If no setting, show all unreconciled
-
-            // Changed Logic: Instead of strictly >= start && <= end, 
-            // we check <= end. This captures current cycle + any lagging unreconciled items.
-            return t.date <= range.end;
-        }).sort((a, b) => b.date.localeCompare(a.date));
-    }, [transactions, selectedBank, selectedStatementMonth, cardSettings]);
-
-    // Logic: Discrepancy
-    // (Statement Total Input) - (Sum of ALL Unreconciled Candidate Transactions up to cycle end)
-    const unreconciledSumInCycle = candidateTransactions.reduce((s, t) => s + t.amount, 0);
-    const targetTotal = parseFloat(statementTotal) || 0;
-    const discrepancy = targetTotal - unreconciledSumInCycle;
-
-    // Logic: Reconciled Display
-    // For the "Reconciled" number, we usually only care about what falls strictly in this cycle's date range
-    // to show how much "Activity" happened this month.
-    // However, users might reconcile old items. For visual clarity in "Billed", we keep strict range or logic?
-    // Let's keep strict range for "Reconciled" stat to denote "This month's cleared items".
-    const reconciledTotalInCycle = useMemo(() => {
-        if (selectedBank === '-') return 0;
-
-        // Priority 1: Use saved statement amount if available
-        const setting = cardSettings[selectedBank];
-        const savedAmount = setting?.statementAmounts?.[selectedStatementMonth];
-        if (savedAmount !== undefined) return savedAmount;
-
-        // Priority 2: Calculate from reconciled transactions (Strict cycle range)
-        const range = getCycleRange(selectedBank, selectedStatementMonth);
-        if (!range) return 0;
-        return transactions
-            .filter(t => t.cardBank === selectedBank && isReconciledInCycle(t, range))
-            .reduce((s, t) => s + t.amount, 0);
-    }, [transactions, selectedBank, selectedStatementMonth, cardSettings]);
-
-    const cardSummary = useMemo(() => {
-        return cardBanks.filter(c => c !== '-').map(bank => {
-            const txs = transactions.filter(t => t.cardBank === bank);
-
-            // Unbilled: All time unreconciled (simplest view for card summary card)
-            const unbilled = txs.filter(t => !t.isReconciled).reduce((s, t) => s + t.amount, 0);
-
-            // Billed: Just this month's reconciled sum for quick view
-            const range = getCycleRange(bank, selectedStatementMonth);
-            const billed = txs.filter(t => {
-                if (!range) return t.isReconciled;
-                return isReconciledInCycle(t, range);
-            }).reduce((s, t) => s + t.amount, 0);
-
-            const issued = isMonthIssued(bank, selectedStatementMonth);
-            return { bank, unbilled, billed, issued, totalCount: txs.length };
-        }).filter(s => s.totalCount > 0);
-    }, [transactions, cardBanks, cardSettings, selectedStatementMonth]);
-
-    // Helpers for Detail Modal
-    const getDetailTransactions = (bank: string, type: 'current' | 'future' | 'reconciled') => {
-        const range = getCycleRange(bank, selectedStatementMonth);
-        return transactions.filter(t => {
-            if (t.cardBank !== bank) return false;
-
-            // Reconciled List: Show strict cycle range to keep the list relevant to "This Month's Statement"
-            if (type === 'reconciled') {
-                if (!range) return t.isReconciled;
-                return isReconciledInCycle(t, range);
-            }
-
-            if (t.isReconciled) return false;
-
-            if (!range) return type === 'current';
-
-            const isBeforeOrInCycle = t.date <= range.end;
-            const isFutureDate = t.date > range.end;
-
-            // "Current Bill": Includes current cycle items + previous unreconciled items (Late Posting)
-            if (type === 'current') {
-                return isBeforeOrInCycle;
-            }
-
-            // "Future": Strictly items AFTER the cycle end date
-            if (type === 'future') {
-                return isFutureDate;
-            }
-
-            return false;
-        }).sort((a, b) => type === 'future' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date));
-    };
-
-    const getTotal = (bank: string, type: 'current' | 'future' | 'reconciled') => {
-        return getDetailTransactions(bank, type).reduce((sum, t) => sum + t.amount, 0);
-    };
+    const renderTransactions = (records: Transaction[], kind: DetailKind) => records.length === 0
+        ? <p className="px-4 py-10 text-center text-sm text-slate-500">本清單目前沒有紀錄。</p>
+        : <ul className="divide-y divide-slate-100">{[...records].sort((a, b) => b.date.localeCompare(a.date)).map(transaction => (
+            <li key={transaction.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0"><p className="break-words text-sm font-semibold text-slate-800">{transaction.description}</p><p className="mt-1 text-xs text-slate-500">{transaction.date} · {transaction.category}{kind === 'unassigned' ? ' · 原核銷紀錄保留' : ''}</p></div>
+                <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end"><span className="font-number font-semibold text-slate-900">{money(transaction.amount)}</span>
+                    {kind === 'reconciled' ? <button type="button" onClick={() => onReconcile(transaction.id, null)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">取消核對</button>
+                        : kind !== 'future' && <button type="button" onClick={() => onReconcile(transaction.id, selectedMonth)} className="rounded-lg bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100">{kind === 'unassigned' ? '確認歸入 ' + selectedMonth : '歸入本月並核對'}</button>}
+                </div>
+            </li>
+        ))}</ul>;
 
     return (
-        <div className="space-y-8 pb-16">
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Calculator className="text-indigo-500" /> 對帳核對</h3>
+        <div className="space-y-5 pb-10 animate-fade-in">
+            <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div><h2 className="text-2xl font-bold text-slate-900">帳單核對</h2><p className="mt-1 text-sm text-slate-600">選擇帳單月份，逐筆確認消費歸屬。</p></div>
+                <div className="flex w-fit items-center rounded-xl border border-slate-200 bg-white p-1">
+                    <button type="button" aria-label="上個月" onClick={() => changeContext(() => onMonthChange(shiftYearMonth(selectedMonth, -1)))} className="rounded-lg p-3 hover:bg-slate-100"><ChevronLeft size={18} /></button>
+                    <input type="month" aria-label="帳單月份" value={selectedMonth} onChange={event => { const month = event.target.value; if (isYearMonth(month)) changeContext(() => onMonthChange(month)); }} className="w-36 min-w-0 bg-transparent px-2 py-2 text-base font-semibold" />
+                    <button type="button" aria-label="下個月" onClick={() => changeContext(() => onMonthChange(shiftYearMonth(selectedMonth, 1)))} className="rounded-lg p-3 hover:bg-slate-100"><ChevronRight size={18} /></button>
                 </div>
+            </header>
+            <div className="flex items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 text-sm leading-relaxed text-indigo-950"><Info size={18} className="mt-0.5 shrink-0" /><p>每筆消費只屬於一個卡別與帳單月份。舊核銷紀錄沒有帳單月份時，請人工確認；「已核對」不代表已繳費。</p></div>
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                <form onSubmit={saveStatement} className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div><label htmlFor="statement-bank" className="mb-2 block text-sm font-semibold text-slate-700">卡別</label><select id="statement-bank" value={selectedBank} onChange={event => { const bank = event.target.value; changeContext(() => setSelectedBank(bank)); }} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base"><option value="-">請選擇卡片</option>{availableBanks.map(bank => <option key={bank} value={bank}>{bank}</option>)}</select></div>
+                    <div><label htmlFor="statement-amount" className="mb-2 block text-sm font-semibold text-slate-700">帳單總額 <span className="text-xs font-normal text-slate-500">依銀行帳單填寫</span></label><input id="statement-amount" type="number" step="0.01" required disabled={selectedBank === '-'} value={statementTotal} onChange={event => setStatementTotal(event.target.value)} placeholder="待輸入，零元請填 0" className="w-full rounded-xl border border-slate-300 px-3 py-3 text-base font-number disabled:bg-slate-50" /></div>
+                    <button type="submit" disabled={selectedBank === '-'} className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"><Save size={18} />儲存帳單金額</button>
+                </form>
+                {selectedBank !== '-' && <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-slate-600">{dirty ? '帳單金額尚未儲存' : savedAmount === undefined ? '尚未儲存帳單金額' : '已儲存帳單：' + money(savedAmount)}</p><label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={issued} disabled={!setting || (!issued && (savedAmount === undefined || dirty))} onChange={toggleIssued} className="h-5 w-5 rounded border-slate-300 text-indigo-600 disabled:opacity-50" />標記帳單已核結（人工）</label></div>}
+            </section>
+            <p role="status" aria-live="polite" className="min-h-5 text-sm text-indigo-700">{notice}</p>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="space-y-4">
-                        <div className="p-5 bg-indigo-50/50 rounded-2xl border border-indigo-100 space-y-4">
-                            <div>
-                                <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 block">1. 選擇卡別</label>
-                                <select value={selectedBank} onChange={e => setSelectedBank(e.target.value)} className="w-full p-2.5 bg-white border border-indigo-200 rounded-xl text-sm font-bold text-slate-700 outline-none">
-                                    <option value="-">請選擇卡片...</option>
-                                    {cardBanks.filter(b => b !== '-').map(b => <option key={b} value={b}>{b}</option>)}
-                                </select>
-                            </div>
-                            <div className="flex flex-col gap-4">
-                                <div>
-                                    <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 block">2. 帳單月份</label>
-                                    <div className="relative flex items-center">
-                                        <input type="month" value={selectedStatementMonth} onChange={e => setSelectedStatementMonth(e.target.value)} className="w-full p-2.5 bg-white border border-indigo-200 rounded-xl text-sm font-bold text-indigo-600 outline-none appearance-none cursor-pointer z-10 bg-transparent" />
-                                        <Calendar size={14} className="absolute right-3 text-indigo-500 pointer-events-none z-0" />
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2 p-2 bg-white border border-indigo-100 rounded-xl shadow-sm">
-                                    <input id="issued-check" type="checkbox" checked={isMonthIssued(selectedBank, selectedStatementMonth)} onChange={handleToggleIssued} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500" />
-                                    <label htmlFor="issued-check" className="text-xs font-black text-slate-600 cursor-pointer">標記此月帳單已核結出帳</label>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 block">3. 帳單總額</label>
-                                <input type="number" value={statementTotal} onChange={e => setStatementTotal(e.target.value)} className="w-full p-2.5 bg-white border border-indigo-200 rounded-xl text-xl font-black text-slate-800 outline-none" placeholder="0" />
-                            </div>
-                        </div>
-                        <div className={`p-6 rounded-3xl border-2 text-center transition-all ${Math.abs(discrepancy) < 1 && targetTotal > 0 ? 'bg-emerald-50 border-emerald-500 shadow-lg shadow-emerald-100' : 'bg-slate-50 border-slate-200'}`}>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">週期內核對差額</span>
-                            <h4 className={`text-3xl font-black mt-1 ${discrepancy === 0 && targetTotal > 0 ? 'text-emerald-600' : 'text-amber-500'}`}>${discrepancy.toLocaleString()}</h4>
-                            <p className="text-[10px] text-slate-400 mt-2">(帳單總額 - 應繳明細總和)</p>
-                            {discrepancy === 0 && targetTotal > 0 && <p className="text-[10px] text-emerald-600 font-bold mt-2 flex items-center justify-center gap-1"><CheckSquare size={12} /> 帳目一致</p>}
-                        </div>
-                    </div>
-
-                    <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 overflow-hidden flex flex-col max-h-[480px] shadow-sm">
-                        <div className="p-3 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 flex justify-between">
-                            <span>本期帳單應繳明細 (含過往未核)</span>
-                            <span className="text-indigo-600">本期已核: ${reconciledTotalInCycle.toLocaleString()}</span>
-                        </div>
-                        <div className="overflow-y-auto flex-1 p-3 space-y-2">
-                            {candidateTransactions.length > 0 ? candidateTransactions.map(t => (
-                                <div key={t.id} onClick={() => onToggleReconcile(t.id)} className="flex items-center justify-between p-3.5 rounded-2xl border-2 border-slate-50 bg-white hover:border-indigo-200 cursor-pointer transition-all group">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-slate-200 group-hover:border-indigo-400 transition-colors">
-                                            <div className="w-2.5 h-2.5 rounded-full bg-slate-200 group-hover:bg-indigo-400"></div>
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-bold text-slate-700">{t.description}</span>
-                                            <span className="text-[10px] text-slate-400 font-bold">{t.date}</span>
-                                        </div>
-                                    </div>
-                                    <span className="font-black text-slate-800">${t.amount.toLocaleString()}</span>
-                                </div>
-                            )) : (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-300 py-10 italic">
-                                    <CreditCard size={48} className="opacity-10 mb-2" />
-                                    <p className="text-sm">此卡目前無未核銷項目</p>
-                                    <p className="text-[10px]">所有消費皆已核對完成</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+            {selectedBank !== '-' ? <>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-sm text-slate-600">待核對金額</p><p className="mt-2 text-2xl font-bold font-number text-slate-900">{money(summary.candidateTotal)}</p><p className="mt-1 text-xs text-slate-500">{summary.candidates.length} 筆，含過往未核</p></div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-sm text-slate-600">本月已核對</p><p className="mt-2 text-2xl font-bold font-number text-slate-900">{money(summary.reconciledTotal)}</p><p className="mt-1 text-xs text-slate-500">{summary.reconciled.length} 筆已指定 {selectedMonth}</p></div>
+                    <div className={'rounded-2xl border p-5 ' + (complete ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white')}><p className="text-sm text-slate-600">帳單比對差額{dirty ? '（試算）' : ''}</p><p className="mt-2 text-2xl font-bold font-number text-slate-900">{difference === null ? '待輸入帳單' : money(difference)}</p><p className="mt-1 text-xs leading-relaxed text-slate-600">{complete ? '本月已核明細與帳單金額相符' : difference === 0 ? '金額相符，仍有待核對或待確認項目' : '帳單－待核候選與本月已核明細'}</p></div>
                 </div>
-            </div>
+                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                    <div className="border-b border-slate-200 p-4"><h3 className="font-semibold text-slate-800">{selectedBank} · {selectedMonth} 帳單明細</h3><p className="mt-1 text-xs leading-relaxed text-slate-500">{summary.range ? '消費週期 ' + summary.range.start + ' ～ ' + summary.range.end + '；待核候選包含先前未核項目，請依銀行帳單核對。' : '尚未設定結帳日；待核清單顯示此卡全部未核明細，請先到設定填寫結帳日。'}</p></div>
+                    <div className="flex flex-wrap gap-2 border-b border-slate-100 p-3">{(Object.keys(detailLabels) as DetailKind[]).map(kind => <button type="button" key={kind} aria-pressed={listKind === kind} onClick={() => setListKind(kind)} className={'rounded-lg px-3 py-2 text-sm font-medium ' + (listKind === kind ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100')}>{detailLabels[kind]} ({summary[kind].length})</button>)}</div>
+                    {listKind === 'unassigned' && <p className="border-b border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900">這些紀錄保留原核銷時間，尚未計入任何帳單月。請查看實際帳單後，逐筆確認歸入 {selectedMonth}；不會自動推定月份。</p>}
+                    {renderTransactions(summary[listKind], listKind)}
+                </section>
+            </> : <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center"><CreditCard size={30} className="mx-auto mb-3 text-slate-400" /><h3 className="font-semibold text-slate-800">選擇卡片開始核對</h3><p className="mt-2 text-sm text-slate-600">下方可先查看各卡待核與待確認紀錄。</p></section>}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {cardSummary.map(card => (
-                    <div key={card.bank} onClick={() => setSelectedCardDetail(card.bank)} className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all group relative">
-                        <div className="p-6 bg-slate-900 text-white relative">
-                            <div className="flex justify-between items-center mb-6">
-                                <span className="px-3 py-1 bg-white/10 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md">CREDIT CARD</span>
-                                {card.issued && <span className="flex items-center gap-1 text-[10px] font-black bg-emerald-500 text-white px-2 py-1 rounded-lg animate-pulse"><ShieldCheck size={12} /> 已出帳</span>}
-                            </div>
-                            <h3 className="text-2xl font-black mb-1 tracking-tight">{card.bank}</h3>
-                            <div className="mt-6">
-                                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">目前待對帳總額</p>
-                                <p className="text-3xl font-black">${card.unbilled.toLocaleString()}</p>
-                            </div>
-                            <ChevronRight className="absolute bottom-6 right-6 text-white/20 group-hover:text-white transition-all" size={24} />
-                        </div>
-                        <div className="p-5 flex justify-between items-center bg-slate-50/50">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">本月累計已核銷</span>
-                            <span className="text-sm font-black text-emerald-600">${card.billed.toLocaleString()}</span>
-                        </div>
-                    </div>
-                ))}
-            </div>
+            <section><h3 className="mb-3 text-lg font-semibold text-slate-800">各卡概況 · {selectedMonth}</h3><div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{cardSummaries.map(card => <button type="button" key={card.bank} onClick={() => { setDetailBank(card.bank); setDetailKind(card.unassigned.length > 0 ? 'unassigned' : 'candidates'); }} className="rounded-2xl border border-slate-200 bg-white p-5 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/30">
+                <span className="flex items-center justify-between gap-2 font-semibold text-slate-900"><span className="flex items-center gap-2"><CreditCard size={18} className="text-indigo-600" />{card.bank}</span><ChevronRight size={18} className="text-slate-400" /></span>
+                <span className="mt-4 block text-xs text-slate-500">待核對</span><span className="mt-1 block text-2xl font-bold font-number text-slate-900">{money(card.candidateTotal)}</span><span className="mt-3 block text-xs text-slate-600">本月已核 {money(card.reconciledTotal)} · 帳單 {card.statementAmount === undefined ? '待輸入' : money(card.statementAmount)}</span>
+                {card.unassigned.length > 0 && <span className="mt-2 block text-xs font-medium text-amber-700">{card.unassigned.length} 筆帳單月份待確認</span>}
+            </button>)}</div>{cardSummaries.length === 0 && <p className="rounded-xl bg-white p-5 text-sm text-slate-500">尚未建立卡片，可先到設定新增卡別與結帳日。</p>}</section>
 
-            {/* 詳情彈窗 */}
-            {selectedCardDetail && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in" onClick={() => setSelectedCardDetail(null)}>
-                    <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                            <div>
-                                <h3 className="text-2xl font-black text-slate-800 tracking-tight">{selectedCardDetail} 帳務明細清單</h3>
-                                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">按 ESC 或點擊外部可關閉</p>
-                            </div>
-                            <button onClick={() => setSelectedCardDetail(null)} className="p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all shadow-sm"><X size={20} /></button>
-                        </div>
-
-                        <div className="flex-1 overflow-hidden flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-slate-100">
-                            {/* 本期未出帳 */}
-                            <div className="flex-1 flex flex-col min-h-0">
-                                <div className="p-4 bg-indigo-50/50 flex justify-between items-center sticky top-0 border-b border-indigo-100/50">
-                                    <span className="text-xs font-black text-indigo-600 uppercase tracking-widest">本期帳單明細 (含過往未核)</span>
-                                    <span className="font-black text-indigo-700 text-lg">
-                                        ${getTotal(selectedCardDetail, 'current').toLocaleString()}
-                                    </span>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                                    {getDetailTransactions(selectedCardDetail, 'current').map(t => (
-                                        <div key={t.id} onClick={() => onToggleReconcile(t.id)} className="p-3 bg-white border border-slate-100 rounded-2xl hover:border-indigo-300 cursor-pointer flex justify-between group transition-all">
-                                            <div>
-                                                <p className="text-sm font-bold text-slate-700 flex items-center gap-1.5">{t.description}{t.isRecurring && <RefreshCw size={10} className="text-amber-500" />}</p>
-                                                <p className="text-[10px] text-slate-400 font-bold">{t.date}</p>
-                                            </div>
-                                            <span className="text-sm font-black text-slate-800">${t.amount.toLocaleString()}</span>
-                                        </div>
-                                    ))}
-                                    {getDetailTransactions(selectedCardDetail, 'current').length === 0 && (
-                                        <p className="text-center text-slate-300 text-xs py-10 italic">本期無未核項目</p>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* 未來分期與消費 */}
-                            <div className="flex-1 flex flex-col min-h-0 bg-slate-50/30">
-                                <div className="p-4 bg-amber-50/50 flex justify-between items-center sticky top-0 border-b border-amber-100/50">
-                                    <span className="text-xs font-black text-amber-600 uppercase tracking-widest">未來帳務 (下期起)</span>
-                                    <span className="font-black text-amber-700 text-lg">
-                                        ${getTotal(selectedCardDetail, 'future').toLocaleString()}
-                                    </span>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                                    {getDetailTransactions(selectedCardDetail, 'future').map(t => (
-                                        <div key={t.id} className="p-3 bg-white/70 border border-slate-100 rounded-2xl flex justify-between">
-                                            <div>
-                                                <p className="text-sm font-bold text-slate-700 flex items-center gap-1">{t.description}{t.isRecurring && <RefreshCw size={10} className="text-amber-500" />}</p>
-                                                <p className="text-[10px] text-amber-500 font-black">預計扣款: {t.date}</p>
-                                            </div>
-                                            <span className="text-sm font-black text-slate-800">${t.amount.toLocaleString()}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* 已核對 */}
-                            <div className="flex-1 flex flex-col min-h-0">
-                                <div className="p-4 bg-emerald-50/50 flex justify-between items-center sticky top-0 border-b border-emerald-100/50">
-                                    <span className="text-xs font-black text-emerald-600 uppercase tracking-widest">本期已核銷 (週期內)</span>
-                                    <span className="font-black text-emerald-700 text-lg">
-                                        ${getTotal(selectedCardDetail, 'reconciled').toLocaleString()}
-                                    </span>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                                    {getDetailTransactions(selectedCardDetail, 'reconciled').map(t => (
-                                        <div key={t.id} onClick={() => onToggleReconcile(t.id)} className="p-3 bg-white/60 border border-emerald-100 rounded-2xl flex justify-between group cursor-pointer hover:border-rose-300 transition-all">
-                                            <div>
-                                                <p className="text-sm font-bold text-slate-400 line-through">{t.description}</p>
-                                                <p className="text-[10px] text-slate-300 font-bold">{t.date}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="text-sm font-bold text-slate-400 block">${t.amount.toLocaleString()}</span>
-                                                <span className="text-[9px] text-rose-500 font-black opacity-0 group-hover:opacity-100">取消核對</span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <dialog ref={dialogRef} aria-labelledby="card-detail-title" onCancel={() => setDetailBank(null)} onClose={() => setDetailBank(null)} onClick={event => { if (event.target === event.currentTarget) setDetailBank(null); }} className="m-auto max-h-[88dvh] overflow-y-auto rounded-2xl border-0 bg-white p-0 shadow-2xl backdrop:bg-slate-900/50" style={{ width: 'min(48rem, calc(100vw - 2rem))' }}>
+                {detailBank && detailSummary && <div><div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200 bg-white p-5"><div><h3 id="card-detail-title" className="text-lg font-semibold text-slate-900">{detailBank} 帳單明細</h3><p className="mt-1 text-sm text-slate-500">{selectedMonth} · 核對後歸入此帳單月份</p></div><button type="button" aria-label="關閉卡片明細" onClick={() => setDetailBank(null)} className="rounded-lg p-2.5 hover:bg-slate-100"><X size={20} /></button></div>
+                    <div className="flex flex-wrap gap-2 p-4">{(Object.keys(detailLabels) as DetailKind[]).map(kind => <button type="button" key={kind} aria-pressed={detailKind === kind} onClick={() => setDetailKind(kind)} className={'rounded-lg px-3 py-2 text-sm ' + (detailKind === kind ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700')}>{detailLabels[kind]} ({detailSummary[kind].length})</button>)}</div>
+                    <p className="px-4 pb-3 text-sm text-slate-600">本清單金額 {money(sumTransactionAmounts(detailSummary[detailKind]))}{detailKind === 'unassigned' ? ' · 請依銀行帳單確認月份' : ''}</p>
+                    {renderTransactions(detailSummary[detailKind], detailKind)}
+                </div>}
+            </dialog>
         </div>
     );
 };
-
 export default Reconciliation;

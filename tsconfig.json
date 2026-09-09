@@ -16,7 +16,8 @@
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
-    "allowJs": true,
+    "allowJs": false,
+    "strict": true,
     "jsx": "react-jsx",
     "paths": {
       "@/*": [
@@ -25,5 +26,7 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": ["*.ts", "*.tsx", "components/**/*.ts", "components/**/*.tsx", "services/**/*.ts", "hooks/**/*.ts", "utils/**/*.ts"],
+  "exclude": ["node_modules", "dist", ".finance-review.local"]
 }

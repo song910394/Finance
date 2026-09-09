@@ -1,4 +1,6 @@
-import { CardSetting, Transaction } from '../types';
+import { CardSetting, PaymentMethod, Transaction } from '../types';
+
+export const isYearMonth = (value: string): boolean => /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 
 // 以「本地時區」格式化 YYYY-MM-DD。
 // 不可改用 toISOString()：它輸出 UTC，在台灣 (UTC+8) 會把日期往前推一天，
@@ -43,7 +45,7 @@ const statementFallsNextMonth = (setting: CardSetting): boolean =>
 // 取得「帳單月 yearMonth」的消費週期。
 // statementDay 超過該月天數時取該月最後一天（例：結帳日 31 遇到 2 月 → 2/28 或 2/29）。
 export const getCycleRange = (setting: CardSetting | undefined, yearMonth: string): CycleRange | null => {
-    if (!setting || !setting.statementDay) return null;
+    if (!setting || !Number.isInteger(setting.statementDay) || setting.statementDay < 1 || setting.statementDay > 31 || !isYearMonth(yearMonth)) return null;
 
     const [year, month] = yearMonth.split('-').map(Number);
 
@@ -73,13 +75,36 @@ export const getCycleRange = (setting: CardSetting | undefined, yearMonth: strin
     return { start: formatLocalDate(startDate), end: formatLocalDate(endDate) };
 };
 
-// 交易是否計入該週期的「已核銷」：
-// 交易日不晚於週期末，且（交易日落在週期內，或核銷動作發生在週期開始之後——涵蓋補核銷舊帳的情況）
-export const isReconciledInCycle = (t: Transaction, range: CycleRange): boolean => {
-    if (!t.isReconciled) return false;
-    if (t.date > range.end) return false;
-    if (t.date >= range.start) return true;
-    // reconciledDate 是完整 ISO 時間戳，先轉成本地日曆日再比對（直接 split('T') 會拿到 UTC 日期）
-    if (t.reconciledDate && formatLocalDate(new Date(t.reconciledDate)) >= range.start) return true;
-    return false;
+// 帳單月份是使用者確認的唯一歸屬；交易日與核銷操作時間皆不能取代它。
+export const isReconciledInStatement = (transaction: Transaction, month: string): boolean =>
+    transaction.isReconciled && isYearMonth(month) && transaction.statementMonth === month;
+
+export const needsStatementConfirmation = (transaction: Transaction): boolean =>
+    transaction.isReconciled && (!transaction.statementMonth || !isYearMonth(transaction.statementMonth));
+
+export const sumTransactionAmounts = (transactions: Transaction[]): number =>
+    Math.round(transactions.reduce((sum, transaction) => sum + transaction.amount, 0) * 100) / 100;
+
+export const getStatementSummary = (
+    transactions: Transaction[], bank: string, month: string, setting: CardSetting | undefined,
+) => {
+    const range = getCycleRange(setting, month);
+    const bankTransactions = transactions.filter(t => t.paymentMethod === PaymentMethod.CREDIT_CARD && t.cardBank === bank);
+    const candidates = bankTransactions.filter(t => !t.isReconciled && (!range || t.date <= range.end));
+    const reconciled = bankTransactions.filter(t => isReconciledInStatement(t, month));
+    const unassigned = bankTransactions.filter(needsStatementConfirmation);
+    const future = bankTransactions.filter(t => !t.isReconciled && !!range && t.date > range.end);
+    return {
+        range, candidates, reconciled, unassigned, future,
+        candidateTotal: sumTransactionAmounts(candidates),
+        reconciledTotal: sumTransactionAmounts(reconciled),
+        // 核銷只在兩個集合間移動。差額基準不會隨著核銷一筆而減少。
+        knownDetailTotal: sumTransactionAmounts([...candidates, ...reconciled]),
+    };
+};
+
+export const getStatementDifference = (statementAmount: number | undefined, knownDetailTotal: number): number | null => {
+    if (statementAmount === undefined || !Number.isFinite(statementAmount)) return null;
+    const difference = Math.round((statementAmount - knownDetailTotal) * 100) / 100;
+    return difference === 0 ? 0 : difference;
 };

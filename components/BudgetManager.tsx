@@ -1,8 +1,8 @@
-
-import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Wallet, Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Calculator, CreditCard, Home, PiggyBank } from 'lucide-react';
-import { Transaction, PaymentMethod, CardSetting, IncomeSource, MonthlyBudget } from '../types';
-import { formatLocalYearMonth, shiftYearMonth } from '../utils/billing';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, Wallet, Plus, CreditCard, PiggyBank, Save, Info } from 'lucide-react';
+import { Transaction, CardSetting, IncomeSource, MonthlyBudget } from '../types';
+import { isYearMonth, shiftYearMonth } from '../utils/billing';
+import { calculateBudgetTotals, getBudgetIncomeRows, parseBudgetAmount } from '../utils/budget';
 
 interface BudgetManagerProps {
     transactions: Transaction[];
@@ -12,308 +12,171 @@ interface BudgetManagerProps {
     budgets: MonthlyBudget[];
     onUpdateIncomeSources: (sources: IncomeSource[]) => void;
     onUpdateBudgets: (budgets: MonthlyBudget[]) => void;
+    selectedMonth: string;
+    onMonthChange: (month: string) => void;
+    onDirtyChange?: (dirty: boolean) => void;
 }
+interface BudgetDraft {
+    openingBalance: string; loan: string;
+    incomes: Record<string, string>; cards: Record<string, string>; paid: Record<string, boolean>;
+}
+const amountText = (value: number | undefined) => value === undefined ? '' : String(value);
+const money = (value: number) => '$' + value.toLocaleString('zh-TW', { maximumFractionDigits: 2 });
+const inputClass = 'w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-right font-number text-base text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
 const BudgetManager: React.FC<BudgetManagerProps> = ({
-    transactions, cardBanks, cardSettings, incomeSources, budgets, onUpdateIncomeSources, onUpdateBudgets
+    cardBanks, incomeSources, budgets, onUpdateIncomeSources, onUpdateBudgets, selectedMonth, onMonthChange, onDirtyChange,
 }) => {
-    const [selectedMonth, setSelectedMonth] = useState(formatLocalYearMonth(new Date()));
-    const [showAddIncome, setShowAddIncome] = useState(false);
+    const currentBudget = budgets.find(budget => budget.month === selectedMonth);
+    // 同步層驗證會複製物件；來源設定變更不應清掉尚未儲存的帳務輸入。
+    const budgetSignature = JSON.stringify(currentBudget ?? null);
+    const [isCreating, setIsCreating] = useState(false);
     const [newIncomeName, setNewIncomeName] = useState('');
+    const [showAddIncome, setShowAddIncome] = useState(false);
+    const [notice, setNotice] = useState('');
+    const [draft, setDraft] = useState<BudgetDraft>({ openingBalance: '', loan: '', incomes: {}, cards: {}, paid: {} });
 
-    // 取得或建立當月預算資料
-    const currentBudget = useMemo(() => {
-        const found = budgets.find(b => b.month === selectedMonth);
-        if (found) return found;
-        // 建立預設資料
-        return {
-            month: selectedMonth,
-            openingBalance: 0,
-            incomes: incomeSources.map(s => ({ sourceId: s.id, amount: 0 })),
-            loan: 40000,
-            creditCards: []
-        };
-    }, [budgets, selectedMonth, incomeSources]);
+    useEffect(() => {
+        setDraft({ openingBalance: amountText(currentBudget?.openingBalance), loan: amountText(currentBudget?.loan), incomes: {}, cards: {}, paid: {} });
+        setIsCreating(false);
+    }, [selectedMonth, budgetSignature]);
+    useEffect(() => { setNotice(''); }, [selectedMonth]);
 
-    // 移除自動計算邏輯，改為手動輸入
-    // const cardTotals = ... (removed)
-
-    // 計算統計
-    const stats = useMemo(() => {
-        const incomeTotal = currentBudget.incomes.reduce((sum, i) => sum + i.amount, 0);
-
-        // 信用卡總額改為從手動輸入的 creditCards 計算
-        const cardTotal = (currentBudget.creditCards || []).reduce((sum, c) => sum + c.amount, 0);
-
-        const expenseTotal = currentBudget.loan + cardTotal;
-        const balance = currentBudget.openingBalance + incomeTotal - expenseTotal;
-
-        return { incomeTotal, cardTotal, expenseTotal, balance };
-    }, [currentBudget]);
-
-    // 更新預算資料
-    const updateBudget = (updates: Partial<MonthlyBudget>) => {
-        const newBudget = { ...currentBudget, ...updates };
-        const newBudgets = budgets.filter(b => b.month !== selectedMonth);
-        newBudgets.push(newBudget);
-        onUpdateBudgets(newBudgets);
-    };
-
-    const updateIncomeAmount = (sourceId: string, amount: number) => {
-        const newIncomes = currentBudget.incomes.map(i =>
-            i.sourceId === sourceId ? { ...i, amount } : i
-        );
-        // 如果找不到該來源，新增一筆 (雖然通常不會發生，因為初始化時已建立)
-        if (!newIncomes.find(i => i.sourceId === sourceId)) {
-            newIncomes.push({ sourceId, amount });
+    const incomeRows = useMemo(() => getBudgetIncomeRows(incomeSources, currentBudget), [incomeSources, currentBudget]);
+    const cardRows = useMemo(() => {
+        const recorded = (currentBudget?.creditCards ?? []).map((card, index) => ({ ...card, key: 'record:' + index, amount: card.amount as number | undefined }));
+        for (const bank of cardBanks.filter(bank => bank !== '-' && bank !== '其他')) {
+            if (!recorded.some(card => card.cardName === bank)) recorded.push({ key: 'bank:' + bank, cardName: bank, amount: undefined, isPaid: false });
         }
-        updateBudget({ incomes: newIncomes });
+        return recorded;
+    }, [cardBanks, currentBudget]);
+
+    const incomeValue = (key: string, amount: number | undefined) => draft.incomes[key] ?? amountText(amount);
+    const cardValue = (key: string, amount: number | undefined) => draft.cards[key] ?? amountText(amount);
+    const formVisible = !!currentBudget || isCreating;
+    const dirty = draft.openingBalance !== amountText(currentBudget?.openingBalance) || draft.loan !== amountText(currentBudget?.loan)
+        || Object.keys(draft.incomes).length > 0 || Object.keys(draft.cards).length > 0 || Object.keys(draft.paid).length > 0;
+    useEffect(() => {
+        onDirtyChange?.(dirty);
+        return () => onDirtyChange?.(false);
+    }, [dirty, onDirtyChange]);
+    const changeMonth = (month: string) => {
+        if (!isYearMonth(month)) return;
+        if (dirty && !window.confirm('本月帳務尚未儲存，確定要切換月份？')) return;
+        onMonthChange(month);
     };
 
-    const updateCreditCardAmount = (cardName: string, amount: number, isPaid: boolean = false) => {
-        const currentCards = currentBudget.creditCards || [];
-        const existingCard = currentCards.find(c => c.cardName === cardName);
-
-        let newCards;
-        if (existingCard) {
-            newCards = currentCards.map(c => c.cardName === cardName ? { ...c, amount, isPaid: isPaid ?? c.isPaid } : c);
-        } else {
-            newCards = [...currentCards, { cardName, amount, isPaid }];
+    const buildBudget = (): MonthlyBudget | undefined => {
+        if (!formVisible) return undefined;
+        const openingBalance = parseBudgetAmount(draft.openingBalance);
+        const loan = parseBudgetAmount(draft.loan);
+        const incomes = incomeRows.map(row => ({ sourceId: row.sourceId, amount: parseBudgetAmount(incomeValue(row.key, row.amount)) }));
+        const creditCards = cardRows.map(row => ({ cardName: row.cardName, amount: parseBudgetAmount(cardValue(row.key, row.amount)), isPaid: draft.paid[row.key] ?? !!row.isPaid }));
+        if (openingBalance === null || loan === null || incomes.some(row => row.amount === null) || creditCards.some(row => row.amount === null)) return undefined;
+        return { ...currentBudget, month: selectedMonth, openingBalance, loan, incomes: incomes.map(row => ({ ...row, amount: row.amount! })), creditCards: creditCards.map(row => ({ ...row, amount: row.amount! })) };
+    };
+    const previewBudget = buildBudget();
+    const totals = calculateBudgetTotals(previewBudget);
+    const saveBudget = (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        if (!previewBudget) { setNotice('請填妥各項金額；沒有金額時請明確輸入 0。'); return; }
+        try {
+            onUpdateBudgets([...budgets.filter(budget => budget.month !== selectedMonth), previewBudget]);
+            setDraft({ openingBalance: amountText(previewBudget.openingBalance), loan: amountText(previewBudget.loan), incomes: {}, cards: {}, paid: {} });
+            setNotice('本月帳務已更新，保存狀態請見上方。');
+        } catch (error) {
+            setNotice(error instanceof Error ? '未儲存：' + error.message : '帳務未儲存，請檢查輸入。');
         }
-
-        updateBudget({ creditCards: newCards });
     };
-
     const addIncomeSource = () => {
-        if (!newIncomeName.trim()) return;
-        const newSource: IncomeSource = {
-            id: Date.now().toString(),
-            name: newIncomeName.trim()
-        };
-        onUpdateIncomeSources([...incomeSources, newSource]);
-        setNewIncomeName('');
-        setShowAddIncome(false);
+        const name = newIncomeName.trim();
+        if (!name) return;
+        if (incomeSources.some(source => source.name === name)) { setNotice('已有同名來源，請使用既有來源或重新啟用。'); return; }
+        try {
+            onUpdateIncomeSources([...incomeSources, { id: crypto.randomUUID(), name, isActive: true }]);
+            setNewIncomeName(''); setShowAddIncome(false); setNotice('入帳來源已新增，請填寫本月金額。');
+        } catch (error) {
+            setNotice(error instanceof Error ? error.message : '來源未新增，請檢查輸入。');
+        }
     };
-
-    const deleteIncomeSource = (id: string) => {
-        if (!confirm('確定要刪除此入帳來源？')) return;
-        onUpdateIncomeSources(incomeSources.filter(s => s.id !== id));
+    const toggleIncomeSource = (sourceId: string) => {
+        try { onUpdateIncomeSources(incomeSources.map(source => source.id === sourceId ? { ...source, isActive: source.isActive === false } : source)); }
+        catch (error) { setNotice(error instanceof Error ? error.message : '來源狀態未更新。'); }
     };
-
-    const prevMonth = () => setSelectedMonth(shiftYearMonth(selectedMonth, -1));
-
-    const nextMonth = () => setSelectedMonth(shiftYearMonth(selectedMonth, 1));
 
     return (
-        <div className="space-y-4 md:space-y-6 animate-fade-in pb-10">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h2 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">帳務管理</h2>
-                    <p className="text-[10px] md:text-xs text-slate-500 font-medium">追蹤每月入帳與信用卡出帳</p>
+        <div className="space-y-5 pb-10 animate-fade-in">
+            <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div><h2 className="text-2xl font-bold text-slate-900">每月帳務</h2><p className="mt-1 text-sm text-slate-600">整理入帳、貸款與卡費，查看本月資金試算。</p></div>
+                <div className="flex w-fit items-center rounded-xl border border-slate-200 bg-white p-1">
+                    <button type="button" onClick={() => changeMonth(shiftYearMonth(selectedMonth, -1))} className="rounded-lg p-3 hover:bg-slate-100" aria-label="上個月"><ChevronLeft size={18} /></button>
+                    <input type="month" aria-label="帳務月份" value={selectedMonth} onChange={event => changeMonth(event.target.value)} className="w-36 min-w-0 bg-transparent px-2 py-2 text-base font-semibold" />
+                    <button type="button" onClick={() => changeMonth(shiftYearMonth(selectedMonth, 1))} className="rounded-lg p-3 hover:bg-slate-100" aria-label="下個月"><ChevronRight size={18} /></button>
                 </div>
-
-                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-2 py-1.5 shadow-sm hover:shadow-md transition-shadow">
-                    <button onClick={prevMonth} className="p-2 hover:bg-slate-100 rounded-xl transition-colors active:scale-95 touch-target" title="上個月">
-                        <ChevronLeft size={18} className="text-slate-500" />
-                    </button>
-                    <input
-                        type="month"
-                        value={selectedMonth}
-                        onChange={e => setSelectedMonth(e.target.value)}
-                        className="w-[120px] px-2 py-1 text-sm text-slate-700 font-black focus:outline-none bg-transparent cursor-pointer text-center font-number"
-                    />
-                    <button onClick={nextMonth} className="p-2 hover:bg-slate-100 rounded-xl transition-colors active:scale-95 touch-target" title="下個月">
-                        <ChevronRight size={18} className="text-slate-500" />
-                    </button>
-                </div>
+            </header>
+            <div className="flex items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 text-sm text-indigo-950">
+                <Info size={18} className="mt-0.5 shrink-0" /><p className="leading-relaxed">本頁採人工金額：期初餘額＋入帳－貸款－卡費。消費紀錄、對帳帳單及上月結餘不會自動帶入；「已繳費」只作註記，不會再次扣款。</p>
             </div>
-
-            {/* Summary Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group">
-                    <div className="flex items-center gap-2 mb-2">
-                        <div className="p-2 bg-slate-100 text-slate-600 rounded-xl group-hover:scale-110 transition-transform"><Wallet size={16} /></div>
-                        <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase font-display">期初餘額</p>
-                    </div>
-                    <div className="relative">
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-                        <input
-                            type="number"
-                            value={currentBudget.openingBalance || ''}
-                            onChange={e => updateBudget({ openingBalance: parseFloat(e.target.value) || 0 })}
-                            placeholder="0"
-                            className="text-xl md:text-3xl font-black text-slate-800 bg-transparent w-full focus:outline-none pl-4 font-number"
-                        />
-                    </div>
-                </div>
-
-                <div className="bg-emerald-50 p-4 md:p-5 rounded-2xl shadow-sm border border-emerald-100 hover:shadow-lg hover:shadow-emerald-100/50 hover:-translate-y-1 transition-all duration-300 group">
-                    <div className="flex items-center gap-2 mb-2">
-                        <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl group-hover:scale-110 transition-transform"><TrendingUp size={16} /></div>
-                        <p className="text-[10px] md:text-xs font-black text-emerald-600 uppercase font-display">入帳小計</p>
-                    </div>
-                    <h3 className="text-xl md:text-3xl font-black text-emerald-700 font-number tracking-tight">${stats.incomeTotal.toLocaleString()}</h3>
-                </div>
-
-                <div className="bg-rose-50 p-4 md:p-5 rounded-2xl shadow-sm border border-rose-100 hover:shadow-lg hover:shadow-rose-100/50 hover:-translate-y-1 transition-all duration-300 group">
-                    <div className="flex items-center gap-2 mb-2">
-                        <div className="p-2 bg-rose-100 text-rose-600 rounded-xl group-hover:scale-110 transition-transform"><TrendingDown size={16} /></div>
-                        <p className="text-[10px] md:text-xs font-black text-rose-600 uppercase font-display">出帳小計</p>
-                    </div>
-                    <h3 className="text-xl md:text-3xl font-black text-rose-700 font-number tracking-tight">${stats.expenseTotal.toLocaleString()}</h3>
-                </div>
-
-                <div className={`p-4 md:p-5 rounded-2xl shadow-sm border hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group ${stats.balance >= 0 ? 'bg-blue-50 border-blue-100 hover:shadow-blue-100/50' : 'bg-amber-50 border-amber-100 hover:shadow-amber-100/50'}`}>
-                    <div className="flex items-center gap-2 mb-2">
-                        <div className={`p-2 rounded-xl group-hover:scale-110 transition-transform ${stats.balance >= 0 ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'}`}><Calculator size={16} /></div>
-                        <p className={`text-[10px] md:text-xs font-black uppercase font-display ${stats.balance >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>合計</p>
-                    </div>
-                    <h3 className={`text-xl md:text-3xl font-black font-number tracking-tight ${stats.balance >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>
-                        ${stats.balance.toLocaleString()}
-                    </h3>
-                    <p className="text-[10px] text-slate-500 mt-1 font-bold">{stats.balance >= 0 ? '結餘' : '缺額'}</p>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                {/* Income Section */}
-                <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-base md:text-lg font-black text-slate-800 flex items-center gap-2">
-                            <PiggyBank className="text-emerald-500" size={20} />
-                            入帳
-                        </h3>
-                        <button
-                            onClick={() => setShowAddIncome(!showAddIncome)}
-                            className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors"
-                        >
-                            <Plus size={16} />
-                        </button>
-                    </div>
-
-                    {showAddIncome && (
-                        <div className="flex gap-2 mb-4 p-3 bg-slate-50 rounded-xl">
-                            <input
-                                type="text"
-                                value={newIncomeName}
-                                onChange={e => setNewIncomeName(e.target.value)}
-                                placeholder="新入帳來源名稱..."
-                                className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                                onKeyDown={e => e.key === 'Enter' && addIncomeSource()}
-                            />
-                            <button onClick={addIncomeSource} className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold">新增</button>
-                        </div>
-                    )}
-
-                    <div className="space-y-3">
-                        {incomeSources.map(source => {
-                            const incomeData = currentBudget.incomes.find(i => i.sourceId === source.id);
-                            return (
-                                <div key={source.id} className="flex items-center gap-3 p-3 bg-slate-50/50 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors group focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-200">
-                                    <div className="flex-1">
-                                        <span className="text-sm font-bold text-slate-700">{source.name}</span>
-                                        {source.defaultDay && <span className="text-[10px] text-slate-400 ml-2">每月 {source.defaultDay} 日</span>}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-slate-400 text-sm">$</span>
-                                        <input
-                                            type="number"
-                                            value={incomeData?.amount || ''}
-                                            onChange={e => updateIncomeAmount(source.id, parseFloat(e.target.value) || 0)}
-                                            placeholder="0"
-                                            className="w-28 px-3 py-2 text-right text-sm font-bold text-emerald-600 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-number"
-                                        />
-                                        <button
-                                            onClick={() => deleteIncomeSource(source.id)}
-                                            className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all touch-target"
-                                            aria-label="刪除"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                        {incomeSources.length === 0 && (
-                            <p className="text-center py-6 text-slate-400 text-sm">點擊 + 新增入帳來源</p>
-                        )}
-                    </div>
-                </div>
-
-                {/* Expense Section */}
-                <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <h3 className="text-base md:text-lg font-black text-slate-800 flex items-center gap-2 mb-4">
-                        <CreditCard className="text-rose-500" size={20} />
-                        出帳
-                    </h3>
-
-                    <div className="space-y-3">
-                        {/* 貸款 */}
-                        <div className="flex items-center gap-3 p-3 bg-amber-50/50 rounded-xl border border-amber-100 hover:bg-amber-50 transition-colors focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-200">
-                            <div className="p-2 bg-amber-100 text-amber-600 rounded-xl"><Home size={16} /></div>
-                            <div className="flex-1">
-                                <span className="text-sm font-bold text-slate-700">貸款</span>
-                                <span className="text-[10px] text-slate-400 ml-2">每月 28 日</span>
+            {!formVisible ? (
+                <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+                    <Wallet size={32} className="mx-auto mb-3 text-slate-400" /><h3 className="text-lg font-semibold text-slate-800">{selectedMonth} 尚未建立帳務</h3>
+                    <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-600">期初餘額、入帳與支出尚待輸入，現在不判定結餘或缺額。</p>
+                    <button type="button" onClick={() => setIsCreating(true)} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-700"><Plus size={18} />建立本月帳務</button>
+                </section>
+            ) : (
+                <form onSubmit={saveBudget} className="space-y-5">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        {[{ label: '入帳小計', value: totals?.incomeTotal }, { label: '出帳小計', value: totals?.expenseTotal }, { label: '結餘試算', value: totals?.balance }].map(item => (
+                            <div key={item.label} className="rounded-2xl border border-slate-200 bg-white p-5">
+                                <p className="text-sm text-slate-600">{item.label}</p><p className="mt-2 text-2xl font-bold font-number text-slate-900">{item.value === undefined ? '待補資料' : money(item.value)}</p>
+                                <p className="mt-1 text-xs text-slate-500">{dirty || !currentBudget ? '尚未儲存的試算' : '依本頁已填金額計算'}{incomeRows.some(row => row.isOrphan) ? '・含待確認來源' : ''}</p>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-slate-400 text-sm">$</span>
-                                <input
-                                    type="number"
-                                    value={currentBudget.loan || ''}
-                                    onChange={e => updateBudget({ loan: parseFloat(e.target.value) || 0 })}
-                                    placeholder="0"
-                                    className="w-28 px-3 py-2 text-right text-sm font-bold text-amber-600 bg-white border border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-number"
-                                />
-                            </div>
-                        </div>
-
-                        {/* 信用卡 - 手動輸入 */}
-                        {cardBanks.filter(b => b !== '-' && b !== '其他').map(bank => {
-                            // 從 currentBudget.creditCards 取得金額，若無則為 0
-                            const cardData = (currentBudget.creditCards || []).find(c => c.cardName === bank);
-                            const amount = cardData?.amount || 0;
-                            const isPaid = !!cardData?.isPaid;
-
-                            const setting = cardSettings[bank];
-                            const statementDay = setting?.statementDay;
-                            const isNextMonth = setting?.isNextMonth;
-
-                            return (
-                                <div key={bank} className="flex items-center gap-3 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 hover:bg-indigo-50 transition-colors focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-200">
-                                    <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl"><CreditCard size={16} /></div>
-                                    <div className="flex-1">
-                                        <span className="text-sm font-bold text-slate-700">{bank}</span>
-                                        {statementDay && <span className="text-[10px] text-slate-400 ml-2">{isNextMonth ? '次月' : ''}{statementDay} 日</span>}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-slate-400 text-sm">$</span>
-                                        <input
-                                            type="number"
-                                            value={amount || ''}
-                                            onChange={e => updateCreditCardAmount(bank, parseFloat(e.target.value) || 0, isPaid)}
-                                            placeholder="0"
-                                            className="w-28 px-3 py-2 text-right text-sm font-bold text-indigo-600 bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-number"
-                                        />
-                                        <div className="relative">
-                                            <input
-                                                type="checkbox"
-                                                checked={isPaid}
-                                                onChange={e => updateCreditCardAmount(bank, amount, e.target.checked)}
-                                                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                                title="標記為已繳費"
-                                            />
-                                            {isPaid && <span className="absolute -top-1 -right-1 block w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span>}
+                        ))}
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                        <label htmlFor="budget-opening" className="mb-2 block text-sm font-semibold text-slate-800">期初餘額</label>
+                        <input id="budget-opening" type="number" step="0.01" required value={draft.openingBalance} onChange={event => setDraft(previous => ({ ...previous, openingBalance: event.target.value }))} placeholder="請輸入期初餘額" className={inputClass + ' max-w-sm'} />
+                        <p className="mt-2 text-xs text-slate-500">請依實際資金填寫，不會自動接續上月。</p>
+                    </div>
+                    <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
+                        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                            <div className="mb-4 flex items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-lg font-semibold text-slate-800"><PiggyBank size={20} className="text-emerald-600" />入帳</h3><button type="button" onClick={() => setShowAddIncome(!showAddIncome)} className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50"><Plus size={16} />新增來源</button></div>
+                            {showAddIncome && <div className="mb-4 flex flex-wrap gap-2 rounded-xl bg-slate-50 p-3"><input aria-label="新入帳來源名稱" value={newIncomeName} onChange={event => setNewIncomeName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addIncomeSource(); } }} placeholder="入帳來源名稱" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-base" /><button type="button" onClick={addIncomeSource} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">新增</button></div>}
+                            <div className="space-y-4">
+                                {incomeRows.map(row => {
+                                    const id = 'income-' + row.key.replace(':', '-');
+                                    const unsavedNewAmount = row.amount === undefined && incomeValue(row.key, row.amount) !== '';
+                                    return <div key={row.key} className="rounded-xl border border-slate-200 p-3">
+                                        <div className="mb-2 flex items-start justify-between gap-2"><label htmlFor={id} className="min-w-0 text-sm font-semibold text-slate-800">{row.name}{!row.isActive && <span className="ml-2 text-xs font-normal text-slate-500">已停用・保留本月紀錄</span>}{row.isOrphan && <span className="mt-1 block break-all text-xs font-normal text-amber-700">來源連結待確認：{row.sourceId}</span>}</label>
+                                            {!row.isOrphan && <button type="button" disabled={unsavedNewAmount} onClick={() => toggleIncomeSource(row.sourceId)} title={unsavedNewAmount ? '請先儲存金額，再停用來源' : undefined} className="shrink-0 rounded-lg px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">{row.isActive ? '停用' : '啟用'}</button>}
                                         </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                                        <input id={id} type="number" step="0.01" required value={incomeValue(row.key, row.amount)} onChange={event => setDraft(previous => ({ ...previous, incomes: { ...previous.incomes, [row.key]: event.target.value } }))} placeholder="請填金額，無入帳請填 0" className={inputClass} />
+                                    </div>;
+                                })}
+                                {incomeRows.length === 0 && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">尚無入帳來源，可新增後填寫金額。</p>}
+                            </div>
+                            {incomeSources.some(source => source.isActive === false) && <details className="mt-4 text-sm text-slate-600"><summary className="cursor-pointer rounded-lg py-2">管理已停用來源</summary><div className="mt-2 space-y-2">{incomeSources.filter(source => source.isActive === false).map(source => <div key={source.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"><span>{source.name}</span><button type="button" onClick={() => toggleIncomeSource(source.id)} className="rounded-lg px-3 py-2 font-medium text-indigo-700">重新啟用</button></div>)}</div></details>}
+                        </section>
+                        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-800"><CreditCard size={20} className="text-indigo-600" />出帳</h3>
+                            <div className="space-y-4">
+                                <div className="rounded-xl border border-slate-200 p-3"><label htmlFor="budget-loan" className="mb-2 block text-sm font-semibold text-slate-800">本月貸款金額</label><input id="budget-loan" type="number" step="0.01" required value={draft.loan} onChange={event => setDraft(previous => ({ ...previous, loan: event.target.value }))} placeholder="請填金額，無貸款請填 0" className={inputClass} /></div>
+                                {cardRows.map(row => {
+                                    const id = 'card-' + row.key.replace(':', '-');
+                                    return <div key={row.key} className="rounded-xl border border-slate-200 p-3">
+                                        <label htmlFor={id} className="mb-2 block text-sm font-semibold text-slate-800">{row.cardName} 卡費{!cardBanks.includes(row.cardName) && <span className="ml-2 text-xs font-normal text-amber-700">保留歷史卡別</span>}</label>
+                                        <input id={id} type="number" step="0.01" required value={cardValue(row.key, row.amount)} onChange={event => setDraft(previous => ({ ...previous, cards: { ...previous.cards, [row.key]: event.target.value } }))} placeholder="依帳單填寫，無卡費請填 0" className={inputClass} />
+                                        <label className="mt-3 inline-flex cursor-pointer items-center gap-2 py-1 text-sm text-slate-600"><input type="checkbox" checked={draft.paid[row.key] ?? !!row.isPaid} onChange={event => setDraft(previous => ({ ...previous, paid: { ...previous.paid, [row.key]: event.target.checked } }))} className="h-5 w-5 rounded border-slate-300 text-indigo-600" />已繳費（人工註記）</label>
+                                    </div>;
+                                })}
+                            </div>
+                        </section>
                     </div>
-                </div>
-            </div>
+                    <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-slate-600">金額留白代表待補資料；沒有金額時請填 0。</p><button type="submit" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-700"><Save size={18} />{currentBudget ? '儲存本月帳務' : '建立並儲存'}</button></div>
+                </form>
+            )}
+            <p role="status" aria-live="polite" className="min-h-5 text-sm text-indigo-700">{notice}</p>
         </div>
     );
 };
-
 export default BudgetManager;

@@ -1,60 +1,35 @@
-const CACHE_NAME = 'hs-finance-v1';
-const urlsToCache = [
-    './',
-    './index.html',
-    './manifest.json'
-];
+const CACHE_NAME = 'hs-finance-static-v2';
+const OWN_OLD_CACHES = ['hs-finance-v1'];
+const STATIC_PATH = /\.(?:html|js|css|json|svg|png|jpe?g|webp|ico|woff2?)$/i;
 
-// Install event - cache static assets
-self.addEventListener('install', (event) => {
-    event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then((cache) => {
-                console.log('Opened cache');
-                return cache.addAll(urlsToCache);
-            })
-    );
-    self.skipWaiting();
-});
-
-// Activate event - clean up old caches
+self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => {
-    event.waitUntil(
-        caches.keys().then((cacheNames) => {
-            return Promise.all(
-                cacheNames.map((cacheName) => {
-                    if (cacheName !== CACHE_NAME) {
-                        console.log('Deleting old cache:', cacheName);
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        })
-    );
-    self.clients.claim();
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names.filter((name) => OWN_OLD_CACHES.includes(name) || (name.startsWith('hs-finance-static-') && name !== CACHE_NAME)).map((name) => caches.delete(name)));
+    await self.clients.claim();
+  })());
 });
 
-// Fetch event - network first, fallback to cache
 self.addEventListener('fetch', (event) => {
-    event.respondWith(
-        fetch(event.request)
-            .then((response) => {
-                // Clone the response
-                const responseClone = response.clone();
-
-                // Cache successful responses
-                if (response.status === 200) {
-                    caches.open(CACHE_NAME)
-                        .then((cache) => {
-                            cache.put(event.request, responseClone);
-                        });
-                }
-
-                return response;
-            })
-            .catch(() => {
-                // Fallback to cache if network fails
-                return caches.match(event.request);
-            })
-    );
+  const url = new URL(event.request.url);
+  const scope = new URL(self.registration.scope);
+  // Cloud/API traffic and other applications must never use this application's cache.
+  if (event.request.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname) || url.search || /\/api(?:\/|$)/i.test(url.pathname)) return;
+  const relativePath = url.pathname.slice(scope.pathname.length);
+  if (!(['', 'index.html', 'manifest.json'].includes(relativePath) || (/^(?:assets|icons)\//.test(relativePath) && STATIC_PATH.test(relativePath)))) return;
+  event.respondWith((async () => {
+    try {
+      const response = await fetch(event.request);
+      if (response.ok && response.type === 'basic') {
+        try { const cache = await caches.open(CACHE_NAME); await cache.put(event.request, response.clone()); } catch { /* Cache failure must not hide a valid network response. */ }
+      }
+      return response;
+    } catch (error) {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+      throw error;
+    }
+  })());
 });

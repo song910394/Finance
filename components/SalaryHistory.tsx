@@ -1,366 +1,149 @@
-
-import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Calendar, ChevronRight, Activity, Percent } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Calendar, Activity, Pencil, X } from 'lucide-react';
 import { SalaryAdjustment } from '../types';
 import { formatLocalYearMonth } from '../utils/billing';
+import { growthPercent, isValidTransactionDate, parseMoney } from '../utils/transactions';
 
 interface SalaryHistoryProps {
     adjustments: SalaryAdjustment[];
     onAddAdjustment: (adjustment: Omit<SalaryAdjustment, 'id'>) => void;
+    onEditAdjustment: (id: string, adjustment: Omit<SalaryAdjustment, 'id'>) => void;
     onDeleteAdjustment: (id: string) => void;
 }
 
-const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustment, onDeleteAdjustment }) => {
+export function calculateSalaryStatistics(adjustments: SalaryAdjustment[]) {
+    if (adjustments.length < 2) return null;
+    const sorted = [...adjustments].sort((a, b) => a.date.localeCompare(b.date));
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const years = (Date.parse(`${last.date}-01`) - Date.parse(`${first.date}-01`)) / (1000 * 60 * 60 * 24 * 365);
+    const salaryGrowth = last.totalSalary - first.totalSalary;
+    const firstInsurance = first.laborInsurance + first.healthInsurance;
+    const lastInsurance = last.laborInsurance + last.healthInsurance;
+    const cagr = years >= 1 && first.totalSalary > 0 && last.totalSalary >= 0 ? (Math.pow(last.totalSalary / first.totalSalary, 1 / years) - 1) * 100 : null;
+    return {
+        salaryGrowth,
+        salaryGrowthPercent: growthPercent(first.totalSalary, last.totalSalary),
+        insuranceGrowth: lastInsurance - firstInsurance,
+        insuranceGrowthPercent: growthPercent(firstInsurance, lastInsurance),
+        cagr: cagr !== null && Number.isFinite(cagr) ? cagr : null,
+        cagrReason: years < 1 ? '未滿一年' : '基期無法計算',
+    };
+}
+
+export function prepareSalaryAdjustment(values: { date: string; totalSalary: string; adjustmentItem: string; laborInsurance: string; healthInsurance: string; mealCost: string; welfareFund: string }, adjustments: SalaryAdjustment[], editingId: string | null): Omit<SalaryAdjustment, 'id'> {
+    if (!isValidTransactionDate(`${values.date}-01`) || !values.adjustmentItem.trim()) throw new Error('請填寫有效生效年月與調整原因。');
+    const totalSalary = parseMoney(values.totalSalary);
+    const laborInsurance = parseMoney(values.laborInsurance);
+    const healthInsurance = parseMoney(values.healthInsurance);
+    const mealCost = parseMoney(values.mealCost);
+    const welfareFund = parseMoney(values.welfareFund);
+    if (totalSalary === null || laborInsurance === null || healthInsurance === null || mealCost === null || welfareFund === null) throw new Error('薪資與每項扣款皆須填寫完整數字；沒有扣款請明確填 0。');
+    const previous = adjustments.filter(adjustment => adjustment.id !== editingId && adjustment.date < values.date).sort((a, b) => b.date.localeCompare(a.date))[0];
+    return { date: values.date, totalSalary, adjustmentItem: values.adjustmentItem.trim(), adjustmentAmount: previous ? totalSalary - previous.totalSalary : 0, laborInsurance, healthInsurance, mealCost, welfareFund };
+}
+
+const inputClass = 'w-full min-h-11 p-3 bg-white border border-slate-300 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-indigo-500 outline-none';
+const buttonClass = 'min-h-11 px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50';
+const primaryClass = 'min-h-11 px-5 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700';
+const fieldString = (value: number | undefined): string => value !== undefined && Number.isFinite(value) ? String(value) : '';
+const signedAmount = (amount: number) => `${amount >= 0 ? '+' : '−'}$${Math.abs(amount).toLocaleString()}`;
+
+const SalaryHistory: React.FC<SalaryHistoryProps> = ({ adjustments, onAddAdjustment, onEditAdjustment, onDeleteAdjustment }) => {
     const [isAdding, setIsAdding] = useState(false);
-    const [date, setDate] = useState(formatLocalYearMonth(new Date())); // YYYY-MM
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [date, setDate] = useState(formatLocalYearMonth(new Date()));
     const [totalSalary, setTotalSalary] = useState('');
     const [adjustmentItem, setAdjustmentItem] = useState('');
     const [laborInsurance, setLaborInsurance] = useState('');
     const [healthInsurance, setHealthInsurance] = useState('');
     const [mealCost, setMealCost] = useState('');
     const [welfareFund, setWelfareFund] = useState('');
-
-    // Pre-fill data when opening modal
+    const [prefilledFrom, setPrefilledFrom] = useState('');
+    const [formError, setFormError] = useState('');
+    const [notice, setNotice] = useState('');
+    const dialogRef = useRef<HTMLDialogElement>(null);
     useEffect(() => {
-        if (isAdding && adjustments.length > 0) {
-            // Find the latest adjustment
-            const sorted = [...adjustments].sort((a, b) => b.date.localeCompare(a.date));
-            const lastAdj = sorted[0];
-
-            // Pre-fill fields
-            setLaborInsurance(lastAdj.laborInsurance.toString());
-            setHealthInsurance(lastAdj.healthInsurance.toString());
-            setMealCost(lastAdj.mealCost.toString());
-            setWelfareFund(lastAdj.welfareFund.toString());
-        }
-    }, [isAdding, adjustments]);
-
-    // Sort adjustments by date descending
-    const sortedAdjustments = useMemo(() => {
-        return [...adjustments].sort((a, b) => b.date.localeCompare(a.date));
-    }, [adjustments]);
-
-    // Sort by date ascending for trend calculation
-    const chronologicalAdjustments = useMemo(() => {
-        return [...adjustments].sort((a, b) => a.date.localeCompare(b.date));
-    }, [adjustments]);
-
-    // Statistics Calculation
-    const statistics = useMemo(() => {
-        if (chronologicalAdjustments.length < 2) return null;
-
-        const first = chronologicalAdjustments[0];
-        const last = chronologicalAdjustments[chronologicalAdjustments.length - 1];
-
-        // Total Salary Growth
-        const salaryGrowth = last.totalSalary - first.totalSalary;
-        const salaryGrowthPercent = (salaryGrowth / first.totalSalary) * 100;
-
-        // Years difference
-        const firstDate = new Date(first.date + '-01');
-        const lastDate = new Date(last.date + '-01');
-        const yearsDiff = (lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24 * 365);
-
-        // CAGR (Compound Annual Growth Rate)
-        // Formula: (End Value / Start Value)^(1 / Years) - 1
-        let cagr = 0;
-        if (yearsDiff >= 1) {
-            cagr = (Math.pow(last.totalSalary / first.totalSalary, 1 / yearsDiff) - 1) * 100;
-        } else {
-            // If less than a year, just annualized simple growth? Or just show absolute?
-            // Let's stick to simple total growth if < 1 year to avoid massive annualized numbers for short term.
-            // Or maybe just show 0 if not applicable.
-            // Actually, "Annual Salary Growth Rate" usually implies YoY or CAGR.
-            // If we have less than a year, CAGR is mathematically valid but can be misleading (e.g. 10% in 1 month => huge annual info).
-            // Let's fallback to simple growth if years < 1, but labeled differently?
-            // Simplification: Just show CAGR if years >= 1, else "N/A" or hide.
-            cagr = 0;
-        }
-
-        // Insurance Growth (Labor + Health)
-        const firstInsurance = first.laborInsurance + first.healthInsurance;
-        const lastInsurance = last.laborInsurance + last.healthInsurance;
-        const insuranceGrowth = lastInsurance - firstInsurance;
-        const insuranceGrowthPercent = firstInsurance > 0 ? (insuranceGrowth / firstInsurance) * 100 : 0;
-
-        return {
-            salaryGrowth,
-            salaryGrowthPercent,
-            cagr: yearsDiff >= 1 ? cagr : null,
-            insuranceGrowth,
-            insuranceGrowthPercent
-        };
-    }, [chronologicalAdjustments]);
-
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-
-        // Auto-calculate adjustment amount
-        const currentSalary = parseFloat(totalSalary) || 0;
-        let adjustmentAmount = 0;
-
-        // Find previous record (closest date before current date)
-        const previousRecord = sortedAdjustments.find(adj => adj.date < date);
-
-        if (previousRecord) {
-            adjustmentAmount = currentSalary - previousRecord.totalSalary;
-        } else if (chronologicalAdjustments.length > 0) {
-            // If no earlier record exists but there are records (e.g. inserting at the beginning), maybe diff is 0 or current?
-            // Usually first record has 0 adjustment or it is the base.
-            // Let's assume 0 if it's the very first chronologically.
-            // However, if we are adding a record in the middle, we compared to the one before it.
-            // If date is earlier than all existing, it's the new "first", so adjustment is 0 (or undefined).
-            adjustmentAmount = 0;
-        }
-
-        onAddAdjustment({
-            date,
-            totalSalary: currentSalary,
-            adjustmentItem,
-            adjustmentAmount,
-            laborInsurance: parseFloat(laborInsurance) || 0,
-            healthInsurance: parseFloat(healthInsurance) || 0,
-            mealCost: parseFloat(mealCost) || 0,
-            welfareFund: parseFloat(welfareFund) || 0,
-        });
-        setIsAdding(false);
-        resetForm();
-    };
-
-    const resetForm = () => {
+        if (isAdding && !dialogRef.current?.open) dialogRef.current?.showModal();
+        if (!isAdding && dialogRef.current?.open) dialogRef.current.close();
+    }, [isAdding]);
+    const sortedAdjustments = useMemo(() => [...adjustments].sort((a, b) => b.date.localeCompare(a.date)), [adjustments]);
+    const chronologicalAdjustments = useMemo(() => [...adjustments].sort((a, b) => a.date.localeCompare(b.date)), [adjustments]);
+    const statistics = useMemo(() => calculateSalaryStatistics(adjustments), [adjustments]);
+    const sameMonthCount = adjustments.filter(adjustment => adjustment.id !== editingId && adjustment.date === date).length;
+    const hasDuplicateMonth = new Set(adjustments.map(adjustment => adjustment.date)).size !== adjustments.length;
+    const openAdd = () => {
+        const last = sortedAdjustments[0];
+        setEditingId(null);
         setDate(formatLocalYearMonth(new Date()));
         setTotalSalary('');
         setAdjustmentItem('');
-        setLaborInsurance('');
-        setHealthInsurance('');
-        setMealCost('');
-        setWelfareFund('');
+        setLaborInsurance(fieldString(last?.laborInsurance));
+        setHealthInsurance(fieldString(last?.healthInsurance));
+        setMealCost(fieldString(last?.mealCost));
+        setWelfareFund(fieldString(last?.welfareFund));
+        setPrefilledFrom(last?.date ?? '');
+        setFormError('');
+        setIsAdding(true);
+    };
+    const openEdit = (adjustment: SalaryAdjustment) => {
+        setEditingId(adjustment.id);
+        setDate(adjustment.date);
+        setTotalSalary(fieldString(adjustment.totalSalary));
+        setAdjustmentItem(adjustment.adjustmentItem);
+        setLaborInsurance(fieldString(adjustment.laborInsurance));
+        setHealthInsurance(fieldString(adjustment.healthInsurance));
+        setMealCost(fieldString(adjustment.mealCost));
+        setWelfareFund(fieldString(adjustment.welfareFund));
+        setPrefilledFrom('');
+        setFormError('');
+        setIsAdding(true);
+    };
+    const handleSubmit = (event: React.FormEvent) => {
+        event.preventDefault();
+        setFormError('');
+        try {
+            const next = prepareSalaryAdjustment({ date, totalSalary, adjustmentItem, laborInsurance, healthInsurance, mealCost, welfareFund }, adjustments, editingId);
+            if (editingId) {
+                if (!adjustments.some(adjustment => adjustment.id === editingId)) throw new Error('這筆紀錄已不存在，請關閉表單後重新確認。');
+                onEditAdjustment(editingId, next);
+            } else onAddAdjustment(next);
+            setNotice(editingId ? '已更新薪資紀錄。' : '已新增薪資紀錄。');
+            setIsAdding(false);
+        } catch (error) { setFormError(error instanceof Error ? error.message : '儲存失敗，請重試。'); }
+    };
+    const getIncrease = (adjustment: SalaryAdjustment) => {
+        const index = chronologicalAdjustments.findIndex(value => value.id === adjustment.id);
+        if (index <= 0 || hasDuplicateMonth) return null;
+        const previous = chronologicalAdjustments[index - 1];
+        return { diff: adjustment.totalSalary - previous.totalSalary, percent: growthPercent(previous.totalSalary, adjustment.totalSalary) };
     };
 
-    const calculateNetPay = (adj: SalaryAdjustment) => {
-        return adj.totalSalary - adj.laborInsurance - adj.healthInsurance - adj.mealCost - adj.welfareFund;
-    };
-
-    const getIncrease = (currentAdj: SalaryAdjustment) => {
-        const currentIndex = chronologicalAdjustments.findIndex(a => a.id === currentAdj.id);
-        if (currentIndex <= 0) return null;
-        const prevAdj = chronologicalAdjustments[currentIndex - 1];
-        const diff = currentAdj.totalSalary - prevAdj.totalSalary;
-        const percent = prevAdj.totalSalary ? (diff / prevAdj.totalSalary) * 100 : 0;
-        return { diff, percent };
-    };
-
-    return (
-        <div className="space-y-6">
-            {/* Statistics Section */}
-            {statistics && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Card 1: Total Salary Growth */}
-                    <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200">
-                        <div className="flex items-center gap-2 mb-2 opacity-80">
-                            <Activity size={18} />
-                            <h3 className="text-xs font-bold uppercase tracking-widest">總薪資成長率</h3>
-                        </div>
-                        <div className="flex items-end gap-2">
-                            <span className="text-3xl font-black">{statistics.salaryGrowthPercent.toFixed(1)}%</span>
-                        </div>
-                        <div className="mt-2 text-xs font-medium opacity-70">
-                            累積成長金額 +${statistics.salaryGrowth.toLocaleString()}
-                        </div>
-                    </div>
-
-                    {/* Card 2: Annual Salary Growth (CAGR) */}
-                    <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
-                        <div className="absolute right-0 top-0 p-3 opacity-5">
-                            <TrendingUp size={80} />
-                        </div>
-                        <div className="flex items-center gap-2 mb-2 text-slate-400">
-                            <Calendar size={18} />
-                            <h3 className="text-xs font-bold uppercase tracking-widest">年度平均成長率</h3>
-                        </div>
-                        <div className="flex items-end gap-2 text-slate-800">
-                            <span className="text-3xl font-black">
-                                {statistics.cagr !== null ? `${statistics.cagr.toFixed(1)}%` : <span className="text-lg text-slate-400">未滿一年</span>}
-                            </span>
-                        </div>
-                        <p className="mt-2 text-[10px] font-bold text-slate-400">
-                            年均複合成長率 (CAGR)
-                        </p>
-                    </div>
-
-                    {/* Card 3: Insurance Growth */}
-                    <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
-                        <div className="absolute right-0 top-0 p-3 opacity-5">
-                            <Percent size={80} />
-                        </div>
-                        <div className="flex items-center gap-2 mb-2 text-slate-400">
-                            <TrendingDown size={18} />
-                            <h3 className="text-xs font-bold uppercase tracking-widest">勞健保費漲幅</h3>
-                        </div>
-                        <div className="flex items-end gap-2 text-slate-800">
-                            <span className="text-3xl font-black">{statistics.insuranceGrowthPercent.toFixed(1)}%</span>
-                        </div>
-                        <div className="mt-2 text-xs font-medium text-slate-400">
-                            增加金額 +${statistics.insuranceGrowth.toLocaleString()}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="flex justify-between items-center bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-                <div>
-                    <h2 className="text-lg font-black text-slate-800">薪資調整歷程</h2>
-                    <p className="text-xs text-slate-500 font-bold">記錄您的職涯薪資成長與變動</p>
-                </div>
-                <button
-                    onClick={() => setIsAdding(true)}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 font-bold text-sm"
-                >
-                    <Plus size={18} />
-                    <span>新增紀錄</span>
-                </button>
-            </div>
-
-            {isAdding && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden">
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                            <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                                <DollarSign className="text-indigo-500" size={20} /> 新增薪資調整紀錄
-                            </h3>
-                            <button onClick={() => setIsAdding(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400 hover:text-slate-600">
-                                <Plus size={20} className="rotate-45" />
-                            </button>
-                        </div>
-                        <div className="p-6">
-                            <form onSubmit={handleSubmit} className="space-y-5">
-                                <div className="grid grid-cols-2 gap-5">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest">生效日期 (年月)</label>
-                                        <input required type="month" value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest">調整後總薪資</label>
-                                        <input required type="number" value={totalSalary} onChange={e => setTotalSalary(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-lg font-black focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="0" />
-                                    </div>
-                                </div>
-
-                                <div className="bg-slate-50 p-4 rounded-xl space-y-4 border border-slate-100">
-                                    <h4 className="text-xs font-black text-indigo-500 uppercase tracking-widest mb-2">調整細項</h4>
-                                    <div className="grid grid-cols-1 gap-4">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-500">調整項目 (例: 年度調薪)</label>
-                                            <input required type="text" value={adjustmentItem} onChange={e => setAdjustmentItem(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="輸入調整原因..." />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-rose-50/50 p-4 rounded-xl space-y-4 border border-rose-100/50">
-                                    <h4 className="text-xs font-black text-rose-500 uppercase tracking-widest mb-2">每月扣除項目</h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-500">勞保費</label>
-                                            <input type="number" value={laborInsurance} onChange={e => setLaborInsurance(e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-rose-500/20 outline-none" placeholder="0" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-500">健保費</label>
-                                            <input type="number" value={healthInsurance} onChange={e => setHealthInsurance(e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-rose-500/20 outline-none" placeholder="0" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-500">伙食費</label>
-                                            <input type="number" value={mealCost} onChange={e => setMealCost(e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-rose-500/20 outline-none" placeholder="0" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-500">福利金</label>
-                                            <input type="number" value={welfareFund} onChange={e => setWelfareFund(e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:ring-2 focus:ring-rose-500/20 outline-none" placeholder="0" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                                    <button type="button" onClick={() => setIsAdding(false)} className="px-6 py-2.5 text-slate-500 hover:text-slate-800 font-bold text-sm">取消</button>
-                                    <button type="submit" className="px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all text-sm">儲存紀錄</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="space-y-4">
-                {sortedAdjustments.map((adj) => {
-                    const increase = getIncrease(adj);
-                    const totalDeductions = adj.laborInsurance + adj.healthInsurance + adj.mealCost + adj.welfareFund;
-
-                    return (
-                        <div key={adj.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                            <div className="p-5 flex flex-col md:flex-row gap-6">
-                                {/* Left: Date & Basic Info */}
-                                <div className="flex flex-col gap-2 min-w-[150px] border-b md:border-b-0 md:border-r border-slate-100 pb-4 md:pb-0 pr-0 md:pr-4">
-                                    <div className="flex items-center gap-2 text-slate-400 font-bold text-xs">
-                                        <Calendar size={14} />
-                                        {adj.date}
-                                    </div>
-                                    <div className="text-2xl font-black text-slate-800">${adj.totalSalary.toLocaleString()}</div>
-                                    {increase && (
-                                        <div className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg w-fit ${increase.diff >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                                            {increase.diff >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                                            <span>{increase.diff >= 0 ? '+' : ''}{increase.diff.toLocaleString()} ({increase.percent.toFixed(1)}%)</span>
-                                        </div>
-                                    )}
-                                    <div className="mt-auto pt-2">
-                                        <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black">{adj.adjustmentItem}</span>
-                                    </div>
-                                </div>
-
-                                {/* Middle: Details Grid */}
-                                <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 items-center">
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase">勞保費</span>
-                                        <span className="text-sm font-bold text-slate-700">-${adj.laborInsurance.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase">健保費</span>
-                                        <span className="text-sm font-bold text-slate-700">-${adj.healthInsurance.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase">福利金</span>
-                                        <span className="text-sm font-bold text-slate-700">-${adj.welfareFund.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase">伙食費</span>
-                                        <span className="text-sm font-bold text-slate-700">-${adj.mealCost.toLocaleString()}</span>
-                                    </div>
-                                </div>
-
-                                {/* Right: Net Pay & Action */}
-                                <div className="flex flex-row md:flex-col justify-between items-end md:items-end gap-2 border-t md:border-t-0 md:border-l border-slate-100 pt-4 md:pt-0 pl-0 md:pl-4 min-w-[150px]">
-                                    <div className="flex flex-col items-end">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">每月扣合計</span>
-                                        <span className="text-sm font-bold text-rose-500">-${totalDeductions.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex flex-col items-end mt-2">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">每月實領</span>
-                                        <span className="text-xl font-black text-emerald-600">${calculateNetPay(adj).toLocaleString()}</span>
-                                    </div>
-                                    <button onClick={() => onDeleteAdjustment(adj.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors mt-auto">
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )
-                })}
-
-                {sortedAdjustments.length === 0 && (
-                    <div className="text-center py-12 text-slate-400 text-sm font-medium bg-slate-50 rounded-3xl border border-slate-100 border-dashed">
-                        尚無薪資調整紀錄
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+    return <div className="space-y-6">
+        {hasDuplicateMonth && <p className="p-3 bg-amber-50 text-amber-900 rounded-xl text-sm">有同月多筆薪資紀錄，生效順序待確認。請檢查是否為重複輸入；成長率暫不顯示。</p>}
+        {statistics && !hasDuplicateMonth && <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl p-5 text-white"><h3 className="flex items-center gap-2 text-sm font-bold"><Activity size={18} />總薪資成長率</h3><p className="mt-3 text-3xl font-black">{statistics.salaryGrowthPercent === null ? <span className="text-lg">基期無法計算</span> : `${statistics.salaryGrowthPercent.toFixed(1)}%`}</p><p className="mt-2 text-sm">累積變動 {signedAmount(statistics.salaryGrowth)}</p></div>
+            <div className="bg-white rounded-2xl p-5 border border-slate-200"><h3 className="flex items-center gap-2 text-sm font-bold text-slate-600"><TrendingUp size={18} />年度平均成長率</h3><p className="mt-3 text-3xl font-black">{statistics.cagr === null ? <span className="text-lg text-slate-500">{statistics.cagrReason}</span> : `${statistics.cagr.toFixed(1)}%`}</p><p className="mt-2 text-sm text-slate-500">年均複合成長率 (CAGR)</p></div>
+            <div className="bg-white rounded-2xl p-5 border border-slate-200"><h3 className="flex items-center gap-2 text-sm font-bold text-slate-600"><TrendingDown size={18} />勞健保費變動率</h3><p className="mt-3 text-3xl font-black">{statistics.insuranceGrowthPercent === null ? <span className="text-lg text-slate-500">基期無法計算</span> : `${statistics.insuranceGrowthPercent.toFixed(1)}%`}</p><p className="mt-2 text-sm text-slate-500">變動金額 {signedAmount(statistics.insuranceGrowth)}</p></div>
+        </div>}
+        <div className="flex flex-wrap justify-between items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200"><div><h2 className="text-lg font-bold">薪資調整歷程</h2><p className="text-sm text-slate-500">記錄生效月份、薪資與各項扣款</p></div><button type="button" onClick={openAdd} className={`${primaryClass} flex items-center gap-2`}><Plus size={18} />新增紀錄</button></div>
+        {notice && <p role="status" className="p-3 bg-indigo-50 text-indigo-800 rounded-xl text-sm">{notice}</p>}
+        <dialog ref={dialogRef} aria-labelledby="salary-dialog-title" onCancel={() => setIsAdding(false)} onClose={() => setIsAdding(false)} style={{ width: 'calc(100% - 1rem)', maxHeight: 'calc(100dvh - 2rem)' }} className="m-auto max-w-2xl p-0 rounded-2xl shadow-2xl overflow-y-auto backdrop:bg-slate-900/60">
+            <div className="sticky top-0 z-10 p-4 border-b border-slate-200 flex justify-between items-center bg-white"><h2 id="salary-dialog-title" className="text-lg font-bold flex items-center gap-2"><DollarSign size={20} className="text-indigo-600" />{editingId ? '編輯薪資調整紀錄' : '新增薪資調整紀錄'}</h2><button type="button" aria-label="關閉薪資表單" onClick={() => setIsAdding(false)} className="min-h-11 min-w-11 p-3 rounded-xl hover:bg-slate-100"><X size={20} /></button></div>
+            <form onSubmit={handleSubmit} className="p-4 md:p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><label className="text-sm font-bold block">生效月份<input autoFocus required type="month" value={date} onChange={event => setDate(event.target.value)} className={`${inputClass} mt-1`} /></label><label className="text-sm font-bold block">調整後總薪資<input required type="number" step="any" value={totalSalary} onChange={event => setTotalSalary(event.target.value)} className={`${inputClass} mt-1`} placeholder="請輸入薪資" /></label></div>
+                {sameMonthCount > 0 && <p className="p-3 bg-amber-50 text-amber-900 text-sm rounded-xl">{date} 已有 {sameMonthCount} 筆其他紀錄，請確認生效月份。如為更正，可取消後編輯既有紀錄。</p>}
+                <label className="text-sm font-bold block">調整原因<input required type="text" value={adjustmentItem} onChange={event => setAdjustmentItem(event.target.value)} className={`${inputClass} mt-1`} placeholder="例如：年度調薪" /></label>
+                <fieldset className="p-4 bg-rose-50/50 rounded-xl border border-rose-100"><legend className="text-sm font-bold text-rose-700 px-1">每月扣除項目</legend><p className="text-sm text-slate-600 mb-3">各項皆須填寫；沒有扣款請明確填 0。{prefilledFrom && `已帶入 ${prefilledFrom} 的扣項，請逐項確認。`}</p><div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{([{ label: '勞保費', value: laborInsurance, setter: setLaborInsurance }, { label: '健保費', value: healthInsurance, setter: setHealthInsurance }, { label: '伙食費', value: mealCost, setter: setMealCost }, { label: '福利金', value: welfareFund, setter: setWelfareFund }]).map(field => <label key={field.label} className="text-sm font-bold block">{field.label}<input required type="number" step="any" value={field.value} onChange={event => field.setter(event.target.value)} className={`${inputClass} mt-1`} placeholder="請填金額，無扣款填 0" /></label>)}</div></fieldset>
+                {formError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-700 text-sm">{formError}</p>}
+                <div className="sticky bottom-0 bg-white py-3 border-t border-slate-200 flex justify-end gap-2"><button type="button" onClick={() => setIsAdding(false)} className={buttonClass}>取消</button><button type="submit" className={primaryClass}>儲存紀錄</button></div>
+            </form>
+        </dialog>
+        <div className="space-y-4">{sortedAdjustments.map(adjustment => {
+            const increase = getIncrease(adjustment);
+            const deductions = adjustment.laborInsurance + adjustment.healthInsurance + adjustment.mealCost + adjustment.welfareFund;
+            return <article key={adjustment.id} className="bg-white rounded-2xl border border-slate-200 p-4 md:p-5"><div className="flex flex-col md:flex-row gap-4"><div className="md:min-w-40"><p className="flex items-center gap-2 text-sm text-slate-500"><Calendar size={16} />{adjustment.date}</p><p className="text-2xl font-black mt-1">${adjustment.totalSalary.toLocaleString()}</p>{increase && <p className={`text-sm mt-1 ${increase.diff >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{signedAmount(increase.diff)} · {increase.percent === null ? '基期無法計算成長率' : `${increase.percent.toFixed(1)}%`}</p>}<p className="text-sm text-indigo-700 mt-2 break-words">{adjustment.adjustmentItem}</p></div><dl className="flex-1 grid grid-cols-2 gap-3 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-4">{[{ label: '勞保費', value: adjustment.laborInsurance }, { label: '健保費', value: adjustment.healthInsurance }, { label: '伙食費', value: adjustment.mealCost }, { label: '福利金', value: adjustment.welfareFund }].map(field => <div key={field.label}><dt className="text-xs text-slate-500">{field.label}</dt><dd className="text-sm font-bold mt-1">${field.value.toLocaleString()}</dd></div>)}</dl><div className="flex md:flex-col justify-between gap-2 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-4"><div><p className="text-xs text-slate-500">每月扣款合計</p><p className="text-sm font-bold text-rose-700">${deductions.toLocaleString()}</p></div><div><p className="text-xs text-slate-500">每月實領</p><p className="text-xl font-black text-emerald-700">${(adjustment.totalSalary - deductions).toLocaleString()}</p></div></div></div><div className="flex justify-end gap-2 mt-3"><button type="button" onClick={() => openEdit(adjustment)} className={`${buttonClass} flex items-center gap-2`} aria-label={`編輯 ${adjustment.date} ${adjustment.adjustmentItem}`}><Pencil size={16} />編輯</button><button type="button" onClick={() => { if (window.confirm(`確定刪除 ${adjustment.date}「${adjustment.adjustmentItem}」？刪除後無法直接復原。`)) { onDeleteAdjustment(adjustment.id); setNotice('已刪除薪資紀錄。'); } }} className="min-h-11 px-4 py-2 rounded-xl text-sm text-rose-700 hover:bg-rose-50 flex items-center gap-2" aria-label={`刪除 ${adjustment.date} ${adjustment.adjustmentItem}`}><Trash2 size={16} />刪除</button></div></article>;
+        })}{sortedAdjustments.length === 0 && <p className="text-center py-12 text-slate-500 text-sm bg-slate-50 rounded-2xl border border-slate-200 border-dashed">尚無薪資調整紀錄，新增第一筆作為比較基準。</p>}</div>
+    </div>;
 };
-
 export default SalaryHistory;

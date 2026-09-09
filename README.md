@@ -1,19 +1,69 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# H&S 記帳
 
-# Run and deploy your AI Studio app
+以 React、TypeScript 與 Vite 建立的個人記帳工具，包含消費概覽、交易明細、信用卡核對、月度帳務及薪資歷程。介面使用繁體中文，支援手機導覽與 PWA 靜態資源快取。
 
-This contains everything you need to run your app locally.
+## 本機啟動
 
-View your app in AI Studio: https://ai.studio/apps/drive/1O1Xy1VxJ1eqwrML9KEbTseqVa3GvfXYG
+使用 Node.js 20.19 以上，或 Node.js 22.12 以上。
 
-## Run Locally
+```sh
+npm ci --legacy-peer-deps
+npm run dev:isolated
+```
 
-**Prerequisites:**  Node.js
+開啟 <http://127.0.0.1:5042/Finance/>。這個入口只使用合成資料；雲端 API 在記憶體模擬，CSP 禁止外部連線，不讀取環境檔。停止程序會重設模擬雲端，瀏覽器草稿仍會保留；重新啟動時若版本不同，請依提示選擇版本。
 
+`npm run dev` 是一般開發模式，使用原有連線設定，網址為 <http://localhost:5040/Finance/>。一般模式會讀取並自動同步設定的 Google Apps Script 帳本，請先確認使用的是指定測試帳本。
 
-1. Install dependencies:
-   `npm install`
-2. Run the app:
-   `npm run dev`
+現有 Recharts 2.13 與 React 19 的 peer dependency 宣告不一致，因此安裝沿用專案的 `--legacy-peer-deps`。這次沒有升級執行期套件。
+
+## 資料與操作流程
+
+1. 啟動時先讀取目前帳本的本機草稿，再載入雲端；初次載入完成前不開放編輯。
+2. 編輯後立即保存本機草稿，再依序上傳完整帳本。畫面區分「已存本機」、「同步中」、「已同步」與失敗。
+3. 本機與雲端不同或其他分頁更新時，暫停自動上傳，由使用者先備份再選擇版本。分頁衝突草稿可從「其他本機草稿」選取查看，已處理版本也保留。
+4. 手動切換網址要經下載或上傳流程確認成功；失敗重試保留原方向與目的地。
+5. JSON 完整備份包含交易、信用卡設定、月度帳務、入帳來源及薪資歷程。Excel 僅交換交易明細，匯入先檢核與預覽，重複資料需個別確認。
+
+概覽、記帳、信用卡與帳務共用選取月份。帳務與帳單未儲存的輸入，在離頁前會提示。
+
+## 已確認的帳務規則
+
+- 每筆信用卡交易只歸屬使用者當下指定的「卡別＋帳單月份」，以 `statementMonth` 記錄。
+- 舊資料若已核銷但沒有帳單月份，保留原核銷紀錄並顯示「帳單月份待確認」，不依交易日期或核銷日期自動歸月。
+- 結帳日用來整理待核候選；候選包含以前未核項目，實際歸屬仍依銀行帳單人工確認。「已核對」不代表已繳費。
+- 核銷在待核與已核集合間移動，不改變相同候選範圍的帳單差額基準。帳單金額與人工核結狀態分開保存。
+- 編輯已核銷交易的金額、日期、卡別或支付方式前，要明確同意取消核銷。只改用途等文字則保留核銷資料。
+- 新分期保存群組、期數及實際每期金額。舊分期資訊不完整時標示待確認，不依相似品名自動合併。
+- 月度帳務沿用「期初餘額＋入帳－貸款－手動信用卡費」計算；不再另扣同一批交易。尚未建立的月份顯示未建立，空白金額不自動當成零。
+- 停用入帳來源保留歷史帳務。薪資扣項需要明確填寫，零元成長基準顯示無法比較。
+
+## 程式入口
+
+| 路徑 | 責任 |
+| --- | --- |
+| `App.tsx` | 導覽、共用月份、帳本更新與保存狀態 |
+| `components/` | 各功能頁、原生對話框與分類圖表 |
+| `services/financeSync.ts` | 本機草稿、序列同步、重試與版本衝突 |
+| `services/googleSheetService.ts` | Google Apps Script 載入與保存介面 |
+| `utils/backup.ts` | 完整備份格式與輸入驗證 |
+| `utils/billing.ts` | 帳單週期、歸月與差額 |
+| `utils/transactionImport.ts` | Excel 交易解析、檢核與重複判斷 |
+| `public/sw.js` | 限定同源靜態資源的離線快取 |
+| `scripts/preview-isolated.mjs` | 合成資料的隔離操作環境 |
+
+頁面與 Excel 套件按需載入。Tailwind 在建置時產生 CSS，不依賴執行時 CDN 或遠端字型。
+
+## 驗證與交付
+
+```sh
+npm run typecheck
+npm test
+npm run build
+```
+
+測試使用假的 storage、load/save 與合成資料，涵蓋日期邊界、核銷歸月、分期、月度帳務、匯入驗證、備份、同步重試與分頁衝突。測試不應呼叫真實雲端帳本。
+
+GitHub Actions 在 build 前執行型別檢查與測試。產物路徑為 `dist`，網站 base 為 `/Finance/`。push、Actions、Pages 部署與正式環境資料驗收各自確認，不由本機測試推定已上線。
+
+Google Apps Script 後端不在此 repository。本機驗證不能證明後端權限、備份政策或跨裝置同時寫入的版本鎖定；這些需取得後端來源後另行確認。
