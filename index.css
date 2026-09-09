@@ -180,6 +180,7 @@ main input[type="number"] {
 .ledger-grid { display: grid; gap: 1rem; max-width: 60rem; align-items: start; }
 .income-row { display: grid; grid-template-columns: minmax(0, 1fr) 10.5rem; align-items: center; gap: .75rem; }
 .income-row > div { margin-bottom: 0; flex-wrap: wrap; }
+.card-bill-row { grid-template-columns: minmax(0, 1fr) 9rem auto; }
 .opening-balance { display: grid; grid-template-columns: minmax(0,1fr) 10.5rem; gap: .5rem 1rem; width: fit-content; max-width: 100%; align-items: center; }
 .opening-balance > label { margin: 0; }
 .opening-balance > p { grid-column: 1 / -1; margin: 0; }
@@ -197,6 +198,7 @@ main input[type="number"] {
 }
 @media (max-width: 399px) {
   .income-row { grid-template-columns: minmax(0,1fr) 9rem; }
+  .card-bill-row { grid-template-columns: minmax(0, 1fr) 8rem auto; gap: .4rem; }
   .opening-balance { grid-template-columns: minmax(0,1fr) 9rem; }
 }
 @media (max-width: 767px) {

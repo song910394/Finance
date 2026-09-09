@@ -24,6 +24,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
     const [filterType, setFilterType] = useState<TimeFilter>('month');
     const [selectedYear, setSelectedYear] = useState(selectedMonth.slice(0, 4));
     const [excludeAgency, setExcludeAgency] = useState(true);
+    const [hideCompletedInstallments, setHideCompletedInstallments] = useState(true);
     const [detailView, setDetailView] = useState<DetailView | null>(null);
     const dialogRef = useRef<HTMLDialogElement>(null);
     useEffect(() => { setSelectedYear(selectedMonth.slice(0, 4)); }, [selectedMonth]);
@@ -52,6 +53,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
             .filter(card => card.candidates.length > 0 || card.reconciled.length > 0 || card.unassigned.length > 0 || card.statementAmount !== undefined);
     }, [transactions, cardBanks, cardSettings, selectedMonth]);
     const installmentSummary = useMemo(() => summarizeInstallments(transactions, selectedMonth), [transactions, selectedMonth]);
+    const visibleInstallments = installmentSummary.groups.filter(group => !hideCompletedInstallments || !group.completeSchedule || group.reconciledPeriods < group.totalPeriods);
     const colors = useMemo(() => categoryColors(transactions.map(transaction => transaction.category)), [transactions]);
     const categoryData = useMemo(() => {
         const categories = new Map<string, Transaction[]>();
@@ -136,7 +138,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
             {(installmentSummary.groups.length > 0 || installmentSummary.unconfirmed.length > 0) && <section className="rounded-xl border border-slate-200 bg-white p-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h3 className="flex items-center gap-2 text-lg font-semibold text-slate-800"><CalendarClock size={20} className="text-indigo-600" />分期付款還款進度</h3><p className="text-sm text-slate-600">{selectedMonth} 分期金額 {money(installmentSummary.monthlyTotal)}</p></div>
                 <p className="mt-2 text-xs leading-relaxed text-slate-500">依帳本已核對紀錄計為已繳款；預先建立的未核對期數列為待繳。金額依各期明細加總。</p>
-                <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">{installmentSummary.groups.map(group => <div key={group.id} className="rounded-xl border border-slate-200 p-4">
+                <label className="mt-2 inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={hideCompletedInstallments} onChange={event => setHideCompletedInstallments(event.target.checked)} className="h-4 w-4 accent-indigo-600" />隱藏已繳清</label>
+                {hideCompletedInstallments && visibleInstallments.length === 0 && installmentSummary.groups.length > 0 && <p className="mt-2 text-sm text-slate-500">已繳清的分期已隱藏，取消勾選即可查看。</p>}
+                <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">{visibleInstallments.map(group => <div key={group.id} className="rounded-xl border border-slate-200 p-4">
                     <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h4 className="break-words font-semibold text-slate-800">{group.name}</h4><p className="mt-1 text-xs text-slate-500">{group.cardBank} · 已記錄 {group.recordedPeriods}/{group.totalPeriods} 期</p></div><span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600">{group.completeSchedule ? '明細完整' : '待補明細'}</span></div>
                     <dl className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-slate-500">{group.completeSchedule ? '分期總額' : '已記錄總額'}</dt><dd className="mt-1 font-semibold font-number">{money(group.recordedAmount)}</dd></div><div><dt className="text-xs text-slate-500">{group.completeSchedule ? '剩餘應繳' : '已記錄待繳金額'}</dt><dd className="mt-1 font-semibold font-number">{money(group.unreconciledAmount)}</dd></div><div><dt className="text-xs text-slate-500">已繳／總期數</dt><dd className="mt-1">{group.reconciledPeriods}／{group.totalPeriods} 期</dd></div><div><dt className="text-xs text-slate-500">最後一期月份</dt><dd className="mt-1">{group.endMonth ?? '待補資料'}</dd></div></dl>
                     <progress aria-label={`${group.name} 已繳進度`} className="mt-3 h-2 w-full accent-indigo-600" value={group.reconciledPeriods} max={group.totalPeriods} />
