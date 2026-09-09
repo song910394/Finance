@@ -323,8 +323,12 @@ export function createFinanceSync(options: Options) {
       } catch (error) { emit({ status: 'error', error: message(error) }); }
     },
     stop: () => { started = false; invalidate(); eventTarget?.removeEventListener('storage', onStorage); },
-    update: (updater: (data: FinanceData) => FinanceData) => {
+    update: (updater: (data: FinanceData) => FinanceData, preservePrevious = false) => {
       const data = parseBackup(updater(parseBackup(snapshot.data)));
+      if (preservePrevious) {
+        preserveReplacedDraft(snapshot.url, decodeDraft(draftJson()), data);
+        emit({ recoveries: readRecoveries(snapshot.url) });
+      }
       revision += 1;
       const keepError = !cloudReady && snapshot.status === 'error';
       emit({ data, dirty: true, status: snapshot.conflict ? 'conflict' : keepError ? 'error' : cloudReady ? 'syncing' : 'local', error: snapshot.conflict || keepError ? snapshot.error : storageError });

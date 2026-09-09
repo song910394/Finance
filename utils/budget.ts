@@ -37,6 +37,18 @@ export const parseBudgetAmount = (value: string): number | null => {
     return Number.isFinite(amount) ? amount : null;
 };
 
+/** 未填卡費不建立金額紀錄，明確填入的零元與繳費註記照常保留。 */
+export const parseBudgetCards = (rows: { cardName: string; amount: string; isPaid: boolean }[]): NonNullable<MonthlyBudget['creditCards']> | null => {
+    const cards: NonNullable<MonthlyBudget['creditCards']> = [];
+    for (const row of rows) {
+        if (!row.amount.trim()) continue;
+        const amount = parseBudgetAmount(row.amount);
+        if (amount === null) return null;
+        cards.push({ ...row, amount });
+    }
+    return cards;
+};
+
 export const calculateBudgetTotals = (budget: MonthlyBudget | undefined) => {
     if (!budget) return null;
     const amounts = [budget.openingBalance, budget.loan, ...budget.incomes.map(i => i.amount), ...(budget.creditCards ?? []).map(c => c.amount)];

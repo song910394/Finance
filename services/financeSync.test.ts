@@ -29,6 +29,25 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => { controllers.splice(0).forEach((controller) => controller.stop()); vi.useRealTimers(); });
 
 describe('finance sync persistence and request ordering', () => {
+  it('批次更新前保留完整原版本，重新開啟後仍可取回', async () => {
+    const { controller, storage } = setup();
+    await controller.start();
+    controller.update(current => ({ ...current, budget: 222 }), true);
+    const recovery = controller.getSnapshot().recoveries[0];
+    expect(recovery).toBeDefined();
+    expect(JSON.parse(storage.getItem(`${getFinanceStorageKey(A)}:recovery:${recovery.id}`)!).data.budget).toBe(100);
+    expect(controller.getSnapshot().data.budget).toBe(222);
+  });
+  it('原始版本備份失敗時不套用批次更新或上傳', async () => {
+    const { controller, storage, save } = setup();
+    await controller.start();
+    const originalSet = storage.setItem;
+    storage.setItem = (key, value) => { if (key.includes(':recovery:')) throw new Error('quota'); originalSet(key, value); };
+    expect(() => controller.update(current => ({ ...current, budget: 222 }), true)).toThrow('quota');
+    expect(controller.getSnapshot().data.budget).toBe(100);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(save).not.toHaveBeenCalled();
+  });
   it('keeps every edit on disk before debounce and restores it after the page closes', async () => {
     const first = setup();
     await first.controller.start();

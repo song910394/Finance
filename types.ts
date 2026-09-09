@@ -60,6 +60,7 @@ export interface AppSettings {
 }
 
 export interface BackupData {
+  historicalStatementsThrough?: '2026-07';
   transactions: Transaction[];
   categories: string[];
   budget: number;
@@ -71,7 +72,7 @@ export interface BackupData {
 }
 
 // 載入邊界正規化後，所有集合都存在；原始紀錄欄位仍完整保留。
-export type FinanceData = Required<BackupData>;
+export type FinanceData = Required<Omit<BackupData, 'historicalStatementsThrough'>> & Pick<BackupData, 'historicalStatementsThrough'>;
 
 export interface SalaryAdjustment {
   id: string;

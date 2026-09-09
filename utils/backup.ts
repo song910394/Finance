@@ -23,6 +23,7 @@ export function parseBackup(input: unknown): FinanceData {
     data = data.data;
   }
   requireValue(object(data), '資料內容');
+  if (data.historicalStatementsThrough !== undefined) requireValue(data.historicalStatementsThrough === '2026-07', '歷史帳單整理版本');
   requireValue(Array.isArray(data.transactions), '交易明細');
   const ids = new Set<string>();
   data.transactions.forEach((tx: any, index: number) => {

@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatCategoryPercent } from '../utils/categoryShare';
 
 interface CategoryChartProps {
     categories: { name: string; value: number; count: number; color: string }[];
@@ -28,14 +29,14 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ categories, total, onSele
     let angle = 0;
 
     return (
-        <figure className="min-w-0 text-center">
+        <figure className="category-donut min-w-0 text-center">
             <svg viewBox="0 0 240 240" width="240" height="240" role="group" aria-label="消費分類圓環圖，可選擇分類查看明細" className="mx-auto block h-auto w-full" style={{ maxWidth: 240 }}>
                 <circle cx="120" cy="120" r="78" fill="none" stroke="#e2e8f0" strokeWidth="36" aria-hidden="true" />
                 {showProportion && categories.filter(category => category.value > 0).map(category => {
                     const start = angle;
                     angle = Math.min(360, angle + category.value / total * 360);
-                    const percentage = Math.round(category.value / total * 100);
-                    const label = category.name + '，' + money(category.value) + '，' + percentage + '%，' + category.count + ' 筆，查看明細';
+                    const percentage = formatCategoryPercent(category.value, total);
+                    const label = category.name + '，' + money(category.value) + '，' + percentage + '，' + category.count + ' 筆，查看明細';
                     return <path key={category.name} d={segmentPath(start, angle)} fill={category.color} fillRule="evenodd"
                         role="button" tabIndex={0} aria-label={label}
                         onClick={() => onSelect(category.name)}
@@ -46,10 +47,10 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ categories, total, onSele
                         <title>{label}</title>
                     </path>;
                 })}
-                <text x="120" y="114" textAnchor="middle" fill="#64748b" fontSize="12" pointerEvents="none">已記錄支出</text>
-                <text x="120" y="138" textAnchor="middle" fill="#0f172a" fontSize="15" fontWeight="700" pointerEvents="none">{money(total)}</text>
+                <text x="120" y="114" textAnchor="middle" fill="#64748b" fontSize="20" pointerEvents="none">已記錄支出</text>
+                <text x="120" y="138" textAnchor="middle" fill="#0f172a" fontSize="22" fontWeight="700" pointerEvents="none">{money(total)}</text>
             </svg>
-            <figcaption className="mt-1 text-xs leading-relaxed text-slate-500">{showProportion ? '點擊圖形或列表分類查看明細' : '此資料不顯示比例，請查看分類金額'}</figcaption>
+            <figcaption className="sr-only">{showProportion ? '點擊圖形或列表分類查看明細' : '此資料不顯示比例，請查看分類金額'}</figcaption>
         </figure>
     );
 };

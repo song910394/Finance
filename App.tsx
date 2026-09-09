@@ -5,6 +5,7 @@ import { DEFAULT_INCOME_SOURCES, GOOGLE_SCRIPT_URL } from './constants';
 import { createFinanceSync } from './services/financeSync';
 import { serializeBackup } from './utils/backup';
 import { formatLocalDate, formatLocalYearMonth } from './utils/billing';
+import { assignHistoricalStatements } from './utils/historicalStatements';
 
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const TransactionList = lazy(() => import('./components/TransactionList'));
@@ -44,6 +45,12 @@ export default function App() {
   const [hasUnsavedForm, setHasUnsavedForm] = useState(false);
   const moreDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { void controller.start(); return () => controller.stop(); }, [controller]);
+  useEffect(() => {
+    if (sync.conflict || sync.dirty || hasUnsavedForm || !['saved', 'local'].includes(sync.status) || !sync.localSaved) return;
+    if (assignHistoricalStatements(data) === data) return;
+    try { controller.update(assignHistoricalStatements, true); }
+    catch { setActionError('歷史帳單整理前的備份未成功，原始資料尚未變更。請確認本機儲存空間後重新載入。'); }
+  }, [controller, data, sync.status, sync.conflict, sync.dirty, sync.localSaved, hasUnsavedForm]);
   useEffect(() => {
     const warnUnsaved = (event: BeforeUnloadEvent) => {
       if (hasUnsavedForm || (sync.dirty && !sync.localSaved)) { event.preventDefault(); event.returnValue = ''; }

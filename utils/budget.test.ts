@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { IncomeSource, MonthlyBudget } from '../types';
-import { calculateBudgetTotals, getBudgetIncomeRows, parseBudgetAmount } from './budget';
+import { calculateBudgetTotals, getBudgetIncomeRows, parseBudgetAmount, parseBudgetCards } from './budget';
 
 const sources: IncomeSource[] = [
     { id: 'salary', name: '薪資' },
@@ -14,6 +14,13 @@ const budget: MonthlyBudget = {
 };
 
 describe('monthly budget', () => {
+    it('卡費可部分或全部留白，不補零，保留已填金額及繳費註記', () => {
+        const cards = parseBudgetCards([{ cardName: '甲卡', amount: '1200', isPaid: true }, { cardName: '乙卡', amount: '', isPaid: false }, { cardName: '丙卡', amount: '0', isPaid: false }]);
+        expect(cards).toEqual([{ cardName: '甲卡', amount: 1200, isPaid: true }, { cardName: '丙卡', amount: 0, isPaid: false }]);
+        expect(parseBudgetCards([{ cardName: '乙卡', amount: ' ', isPaid: false }])).toEqual([]);
+        expect(parseBudgetCards([{ cardName: '甲卡', amount: '1200元', isPaid: false }])).toBeNull();
+        expect(calculateBudgetTotals({ ...budget, creditCards: cards! })?.cardTotal).toBe(1200);
+    });
     it('停用與孤兒來源仍逐筆顯示，金額保留；未填來源保持 undefined', () => {
         const rows = getBudgetIncomeRows(sources, budget);
         expect(rows).toHaveLength(3);
