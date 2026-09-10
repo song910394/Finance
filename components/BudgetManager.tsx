@@ -105,7 +105,7 @@ const BudgetManager: React.FC<BudgetManagerProps> = ({
     };
 
     return (
-        <div className="space-y-5 pb-10 animate-fade-in">
+        <div className="budget-layout space-y-5 pb-10 animate-fade-in">
             <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div><h2 className="text-2xl font-bold text-slate-900">每月帳務</h2><p className="mt-1 text-sm text-slate-600">整理入帳、貸款與卡費，查看本月資金試算。</p></div>
                 <div className="flex w-fit items-center rounded-xl border border-slate-200 bg-white p-1">

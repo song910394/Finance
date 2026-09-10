@@ -235,3 +235,85 @@ main input[type="number"] {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* 奶霜馬卡龍：淡色表面搭配深色文字，警示保留原語意色。 */
+:root {
+  --cream: #fffaf3;
+  --lavender: #eee7fb; --lavender-line: #d4c3ec;
+  --mint: #e2f4eb; --mint-line: #bbdecd;
+  --peach: #ffebe3; --peach-line: #edcbbd;
+  --butter: #fff4d5; --butter-line: #e9d79f;
+  --sky: #e6f1fc; --sky-line: #c0d8ec;
+  --rose: #fbe7ef; --rose-line: #eac3d3;
+}
+body, #root > div { background: var(--cream); }
+#root aside, #root > div > div > header { background: #fffdf9; border-color: #e7ddec; }
+.app-content { max-width: 100rem; }
+button.bg-indigo-600 { background-color: #7051a3; }
+button.bg-indigo-600:hover { background-color: #5d408d; }
+button[aria-current="page"] { background-color: var(--lavender); color: #573681; }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { border-color: #d5cde0; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid #7051a3; outline-offset: 2px; }
+.quick-entry { background: var(--lavender); border: 1px solid var(--lavender-line); color: #573681; }
+.quick-entry button { color: #573681; }
+.summary-grid > :nth-child(4n+1) { background: var(--lavender); border-color: var(--lavender-line); }
+.summary-grid > :nth-child(4n+2) { background: var(--butter); border-color: var(--butter-line); }
+.summary-grid > :nth-child(4n+3) { background: var(--mint); border-color: var(--mint-line); }
+.summary-grid > :nth-child(4n+4) { background: var(--sky); border-color: var(--sky-line); }
+.category-panel { background: #fffdf8; border-color: var(--butter-line); }
+.category-row { background: #f7f3fb; }
+.category-ranking li:nth-child(even) .category-row { background: #eef7f3; }
+.category-row:hover { background: var(--lavender); }
+[data-bank-tone="0"] { --bank-bg: var(--lavender); --bank-line: var(--lavender-line); --bank-accent: #7956aa; }
+[data-bank-tone="1"] { --bank-bg: var(--mint); --bank-line: var(--mint-line); --bank-accent: #39866b; }
+[data-bank-tone="2"] { --bank-bg: var(--peach); --bank-line: var(--peach-line); --bank-accent: #ad6445; }
+[data-bank-tone="3"] { --bank-bg: var(--sky); --bank-line: var(--sky-line); --bank-accent: #467aa9; }
+[data-bank-tone="4"] { --bank-bg: var(--rose); --bank-line: var(--rose-line); --bank-accent: #a45478; }
+[data-bank-tone="5"] { --bank-bg: var(--butter); --bank-line: var(--butter-line); --bank-accent: #957227; }
+[data-bank-tone] { background: var(--bank-bg); border-color: var(--bank-line); }
+button[data-bank-tone]:hover { background: var(--bank-bg); border-color: var(--bank-accent); box-shadow: 0 2px 8px #40305214; }
+[data-bank-tone] progress { accent-color: var(--bank-accent); }
+[data-bank-tone] progress::-webkit-progress-value { background: var(--bank-accent); }
+[data-bank-tone] progress::-moz-progress-bar { background: var(--bank-accent); }
+.ledger-grid > section:first-child { background: var(--mint); border-color: var(--mint-line); }
+.ledger-grid > section:last-child { background: var(--peach); border-color: var(--peach-line); }
+.ledger-grid input[type="number"] { background: #fff; }
+.budget-layout .summary-grid > :first-child { background: var(--mint); border-color: var(--mint-line); }
+.budget-layout .summary-grid > :nth-child(2) { background: var(--peach); border-color: var(--peach-line); }
+.budget-layout .summary-grid > :nth-child(3) { background: var(--butter); border-color: var(--butter-line); }
+.transaction-filters select { background: var(--lavender); }
+dialog[aria-labelledby="transaction-dialog-title"] { background: #fffaf6; }
+dialog[aria-labelledby="transaction-dialog-title"] > div:first-child { background: var(--lavender); }
+dialog[aria-labelledby="transaction-dialog-title"] form :is(input,select):not([type="radio"]):not([type="checkbox"]) { background: white; }
+.settings-layout > .bg-white { background: #fffdf9; border-color: var(--lavender-line); }
+@media (min-width: 1200px) {
+  .app-content { padding: 1rem 1.5rem 1.5rem; }
+  .dashboard-layout { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: .75rem 1rem; align-items: start; }
+  .dashboard-layout > *, .dashboard-analysis > * { margin-top: 0 !important; min-width: 0; }
+  .dashboard-layout > header { grid-column: 1; }
+  .dashboard-layout > .quick-entry { grid-column: 2; justify-self: end; }
+  .dashboard-analysis { display: contents; }
+  .dashboard-analysis > :first-child, .dashboard-analysis > .summary-grid { grid-column: 1 / -1; }
+  .dashboard-analysis > .summary-grid { max-width: none; grid-template-columns: repeat(4,minmax(0,1fr)); align-items: stretch; }
+  .dashboard-analysis > .category-panel { grid-column: 1; width: 100%; max-width: none; }
+  .dashboard-bills { grid-column: 2; grid-row: 4; }
+  .dashboard-bills .tile-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .5rem; }
+  .dashboard-bills .tile-grid .mt-4 { margin-top: .5rem; }
+  .dashboard-bills .tile-grid .mt-3 { margin-top: .5rem; }
+  .dashboard-layout > section:not(.dashboard-analysis):not(.dashboard-bills) { grid-column: 1 / -1; }
+  .dashboard-layout .category-ranking-many { grid-template-columns: minmax(0,1fr); }
+  .dashboard-layout .category-layout { grid-template-columns: 9rem minmax(0,1fr); }
+  .dashboard-layout .category-donut { width: 9rem; }
+  .installment-cards { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .budget-layout > *, .budget-layout form > * { margin-top: .75rem; }
+  .budget-layout .compact-note, .budget-layout .ledger-grid, .budget-layout .save-strip { max-width: none; }
+  .budget-layout form { display: grid; grid-template-columns: minmax(0,2fr) minmax(18rem,1fr); gap: .75rem; }
+  .budget-layout form > * { margin: 0 !important; }
+  .budget-layout .ledger-grid > section > .space-y-3 > * + * { margin-top: 0; }
+  .budget-layout .summary-grid { max-width: none; grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .budget-layout .opening-balance { width: 100%; grid-template-columns: minmax(0,1fr) 9rem; }
+  .budget-layout .ledger-grid, .budget-layout .save-strip { grid-column: 1 / -1; }
+}
+@media (min-width: 1440px) {
+  .dashboard-layout .category-ranking-many { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}

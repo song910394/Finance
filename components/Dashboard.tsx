@@ -19,6 +19,7 @@ interface DashboardProps {
 type TimeFilter = 'month' | 'year' | 'all';
 interface DetailView { type: 'card' | 'category'; name: string }
 const money = (value: number) => '$' + value.toLocaleString('zh-TW', { maximumFractionDigits: 2 });
+const bankTone = (bank: string) => Array.from(bank).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 6;
 
 const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, cardSettings, selectedMonth, onMonthChange, onAddExpense, onOpenReconciliation }) => {
     const [filterType, setFilterType] = useState<TimeFilter>('month');
@@ -70,7 +71,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
     const renderRecords = (records: Transaction[], emptyText: string) => records.length ? <ul className="divide-y divide-slate-100">{records.map(transaction => <li key={transaction.id} className="flex items-start justify-between gap-3 py-3"><div className="min-w-0"><p className="break-words text-sm font-semibold text-slate-800">{transaction.description}</p><p className="mt-1 text-xs text-slate-500">{transaction.date} · {transaction.category}</p></div><span className="shrink-0 text-sm font-semibold font-number text-slate-900">{money(transaction.amount)}</span></li>)}</ul> : <p className="py-4 text-sm text-slate-500">{emptyText}</p>;
 
     return (
-        <div className="space-y-4 pb-6 animate-fade-in">
+        <div className="dashboard-layout space-y-4 pb-6 animate-fade-in">
             <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div><h2 className="text-2xl font-bold text-slate-900">財務概覽</h2><p className="mt-1 text-sm text-slate-600">掌握已記錄消費與預算使用情形。</p></div>
                 <div className="flex w-fit items-center rounded-xl border border-slate-200 bg-white p-1">
@@ -80,12 +81,12 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                 </div>
             </header>
 
-            <div className="flex w-fit max-w-full flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-slate-900 px-3 py-2 text-white">
+            <div className="quick-entry flex w-fit max-w-full flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-3 py-2">
                 <p className="font-semibold">先記一筆</p>
                 <button type="button" onClick={onAddExpense} className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 min-h-11 font-semibold text-slate-900 hover:bg-slate-100"><Plus size={18} />新增支出</button>
             </div>
 
-            <section className="space-y-4">
+            <section className="dashboard-analysis space-y-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="text-lg font-semibold text-slate-800">消費分析 · {timeLabel}</h3>
                     <div className="flex flex-wrap items-center gap-2">
@@ -123,9 +124,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                 </section>
             </section>
 
-            <section className="space-y-3">
+            <section className="dashboard-bills space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-lg font-semibold text-slate-800">帳單概況 · {selectedMonth}</h3><p className="mt-1 text-xs text-slate-500">依各卡帳單月份，包含代買；點卡片可查看相同基準的明細。</p></div><button type="button" onClick={onOpenReconciliation} className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700">前往核對<ArrowRight size={16} /></button></div>
-                <div className="tile-grid">{cardSummaries.map(card => <button type="button" key={card.bank} onClick={() => setDetailView({ type: 'card', name: card.bank })} className="rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-indigo-300 hover:bg-indigo-50/30">
+                <div className="tile-grid">{cardSummaries.map(card => <button type="button" key={card.bank} data-bank-tone={bankTone(card.bank)} onClick={() => setDetailView({ type: 'card', name: card.bank })} className="rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-indigo-300 hover:bg-indigo-50/30">
                     <span className="flex items-center justify-between font-semibold text-slate-900"><span className="flex items-center gap-2"><CreditCard size={18} className="text-indigo-600" />{card.bank}</span><ChevronRight size={18} className="text-slate-400" /></span>
                     <span className="mt-4 block text-xs text-slate-500">待核對金額</span><span className="mt-1 block text-2xl font-bold font-number text-slate-900">{money(card.candidateTotal)}</span>
                     <span className="mt-3 block text-xs text-slate-600">本月已核 {money(card.reconciledTotal)} · 銀行帳單 {card.statementAmount === undefined ? '待輸入' : money(card.statementAmount)}</span>
@@ -140,7 +141,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budget, cardBanks, 
                 <p className="mt-2 text-xs leading-relaxed text-slate-500">依帳本已核對紀錄計為已繳款；預先建立的未核對期數列為待繳。金額依各期明細加總。</p>
                 <label className="mt-2 inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={hideCompletedInstallments} onChange={event => setHideCompletedInstallments(event.target.checked)} className="h-4 w-4 accent-indigo-600" />隱藏已繳清</label>
                 {hideCompletedInstallments && visibleInstallments.length === 0 && installmentSummary.groups.length > 0 && <p className="mt-2 text-sm text-slate-500">已繳清的分期已隱藏，取消勾選即可查看。</p>}
-                <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">{visibleInstallments.map(group => <div key={group.id} className="rounded-xl border border-slate-200 p-4">
+                <div className="installment-cards mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">{visibleInstallments.map(group => <div key={group.id} data-bank-tone={bankTone(group.cardBank)} className="rounded-xl border border-slate-200 p-4">
                     <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h4 className="break-words font-semibold text-slate-800">{group.name}</h4><p className="mt-1 text-xs text-slate-500">{group.cardBank} · 已記錄 {group.recordedPeriods}/{group.totalPeriods} 期</p></div><span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600">{group.completeSchedule ? '明細完整' : '待補明細'}</span></div>
                     <dl className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-slate-500">{group.completeSchedule ? '分期總額' : '已記錄總額'}</dt><dd className="mt-1 font-semibold font-number">{money(group.recordedAmount)}</dd></div><div><dt className="text-xs text-slate-500">{group.completeSchedule ? '剩餘應繳' : '已記錄待繳金額'}</dt><dd className="mt-1 font-semibold font-number">{money(group.unreconciledAmount)}</dd></div><div><dt className="text-xs text-slate-500">已繳／總期數</dt><dd className="mt-1">{group.reconciledPeriods}／{group.totalPeriods} 期</dd></div><div><dt className="text-xs text-slate-500">最後一期月份</dt><dd className="mt-1">{group.endMonth ?? '待補資料'}</dd></div></dl>
                     <progress aria-label={`${group.name} 已繳進度`} className="mt-3 h-2 w-full accent-indigo-600" value={group.reconciledPeriods} max={group.totalPeriods} />
