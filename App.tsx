@@ -14,7 +14,7 @@ const Reconciliation = lazy(() => import('./components/Reconciliation'));
 const BudgetManager = lazy(() => import('./components/BudgetManager'));
 const SalaryHistory = lazy(() => import('./components/SalaryHistory'));
 const Settings = lazy(() => import('./components/Settings'));
-enum Tab { DASHBOARD = '概覽', TRANSACTIONS = '記帳', RECONCILIATION = '信用卡', BUDGET = '帳務', SALARY = '薪資歷程', SETTINGS = '設定' }
+enum Tab { DASHBOARD = '概覽', TRANSACTIONS = '記帳', RECONCILIATION = '帳單核對', BUDGET = '帳務', SALARY = '薪資歷程', SETTINGS = '設定' }
 const initialData = (): FinanceData => ({
   transactions: [], categories: [...DEFAULT_CATEGORIES], cardBanks: Object.values(CardBank), budget: 50000,
   cardSettings: {}, incomeSources: DEFAULT_INCOME_SOURCES.map(source => ({ ...source })), budgets: [], salaryAdjustments: [],
