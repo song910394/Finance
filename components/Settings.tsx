@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CloudDownload, CloudUpload, Download, Plus, Save, Settings as SettingsIcon, Trash2, Upload, X } from 'lucide-react';
-import type { CardSetting, FinanceData } from '../types';
+import type { CardSetting, FinanceData, Transaction } from '../types';
 import { parseBackup } from '../utils/backup';
 
 interface SettingsProps {
+  transactions: Transaction[]; onDeleteCard: (bank: string) => void;
   categories: string[]; budget: number; cardBanks: string[]; cardSettings: Record<string, CardSetting>;
   onUpdateCategories: (value: string[]) => void; onUpdateBudget: (value: number) => void;
   onUpdateCardBanks: (value: string[]) => void; onUpdateCardSettings: (value: Record<string, CardSetting>) => void;
@@ -97,13 +98,18 @@ export default function Settings(props: SettingsProps) {
       <form onSubmit={saveBudget} className="flex flex-wrap items-end gap-3"><label className="min-w-0 text-sm font-medium">預算金額<input type="number" min="0" step="0.01" required value={tempBudget} onChange={event => setTempBudget(event.target.value)} className={inputClass + ' mt-2'} /></label><button type="submit" className={buttonClass}><Save size={18} />儲存預算</button></form>
       <p className="mt-3 text-sm text-slate-500">用於概覽的消費預算使用率；月度帳務中的入帳與貸款另行管理。</p>
     </section>
-    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+    <section className="card-settings-section space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
       <h3 className="text-lg font-bold">信用卡與帳單週期</h3>
-      {cardBanks.filter(bank => bank !== '-').map(bank => <div key={bank} className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:grid-cols-[1fr_1fr]">
-        <h4 className="font-bold sm:col-span-2">{bank}</h4>
-        <label className="text-sm">結帳日<select aria-label={bank + '結帳日'} value={cardSettings[bank]?.statementDay || ''} onChange={event => updateCard(bank, { statementDay: event.target.value ? Number(event.target.value) : 0 })} className={inputClass + ' mt-2'}><option value="">未設定</option>{Array.from({ length: 31 }, (_, index) => index + 1).map(day => <option key={day} value={day}>{day} 日</option>)}</select></label>
-        <label className="flex min-h-11 items-center gap-3 self-end text-sm"><input type="checkbox" className="h-5 w-5 accent-indigo-600" checked={cardSettings[bank]?.isNextMonth ?? ((cardSettings[bank]?.statementDay ?? 15) < 15)} onChange={event => updateCard(bank, { isNextMonth: event.target.checked })} />帳單於次月結帳</label>
-      </div>)}
+      <div className="card-settings-grid">{cardBanks.filter(bank => bank !== '-').map(bank => <div key={bank} className="rounded-xl border border-slate-200 p-3">
+        <div className="flex items-center justify-between gap-2"><h4 className="min-w-0 break-words font-bold">{bank}</h4><button type="button" aria-label={'刪除信用卡 ' + bank} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-sm text-rose-700 hover:bg-rose-50" onClick={() => {
+          const count = props.transactions.filter(transaction => transaction.cardBank === bank).length;
+          if (!window.confirm(`刪除「${bank}」？\n${count} 筆既有消費（包含預先建立的未來期次）將改為現金，金額、日期與分期繳款註記保留。卡片帳單設定會移除，歷史每月帳務卡費仍保留。\n系統會先保留完整本機備份，再執行刪除。`)) return;
+          try { props.onDeleteCard(bank); setError(''); setMessage(`已刪除「${bank}」，${count} 筆消費改為現金；原帳本已保留於本機備份。`); }
+          catch (error) { setError(error instanceof Error ? error.message : '備份或刪除失敗，請重試。'); }
+        }}><Trash2 size={16} />刪除</button></div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1"><label className="inline-flex items-center gap-2 text-sm">結帳日<select aria-label={bank + '結帳日'} value={cardSettings[bank]?.statementDay || ''} onChange={event => updateCard(bank, { statementDay: event.target.value ? Number(event.target.value) : 0 })} className={inputClass + ' !w-24'}><option value="">未設定</option>{Array.from({ length: 31 }, (_, index) => index + 1).map(day => <option key={day} value={day}>{day} 日</option>)}</select></label>
+        <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5 accent-indigo-600" checked={cardSettings[bank]?.isNextMonth ?? ((cardSettings[bank]?.statementDay ?? 15) < 15)} onChange={event => updateCard(bank, { isNextMonth: event.target.checked })} />次月結帳</label></div>
+      </div>)}</div>
       <form onSubmit={event => { event.preventDefault(); const name = newBank.trim(); if (name && !cardBanks.includes(name)) { props.onUpdateCardBanks([...cardBanks, name]); setNewBank(''); } }} className="flex gap-3"><input aria-label="新增信用卡名稱" value={newBank} onChange={event => setNewBank(event.target.value)} placeholder="新增信用卡名稱" className={inputClass} /><button type="submit" className={buttonClass} disabled={!newBank.trim() || cardBanks.includes(newBank.trim())}><Plus size={18} />新增</button></form>
     </section>
     <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">

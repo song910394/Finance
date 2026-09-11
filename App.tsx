@@ -6,6 +6,7 @@ import { createFinanceSync } from './services/financeSync';
 import { serializeBackup } from './utils/backup';
 import { formatLocalDate, formatLocalYearMonth } from './utils/billing';
 import { assignHistoricalStatements } from './utils/historicalStatements';
+import { deleteCard } from './utils/deleteCard';
 
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const TransactionList = lazy(() => import('./components/TransactionList'));
@@ -162,7 +163,7 @@ export default function App() {
               {activeTab === Tab.RECONCILIATION && <Reconciliation {...monthProps} transactions={data.transactions} cardBanks={data.cardBanks} cardSettings={data.cardSettings} onReconcile={reconcileTransaction} onUpdateCardSettings={value => setField('cardSettings', value)} onDirtyChange={setHasUnsavedForm} />}
               {activeTab === Tab.BUDGET && <BudgetManager {...monthProps} transactions={data.transactions} cardBanks={data.cardBanks} cardSettings={data.cardSettings} incomeSources={data.incomeSources} budgets={data.budgets} onUpdateIncomeSources={value => setField('incomeSources', value)} onUpdateBudgets={value => setField('budgets', value)} onDirtyChange={setHasUnsavedForm} />}
               {activeTab === Tab.SALARY && <SalaryHistory adjustments={data.salaryAdjustments} onAddAdjustment={addSalaryAdjustment} onEditAdjustment={editSalaryAdjustment} onDeleteAdjustment={deleteSalaryAdjustment} />}
-              {activeTab === Tab.SETTINGS && <Settings categories={data.categories} budget={data.budget} cardBanks={data.cardBanks} cardSettings={data.cardSettings} onUpdateCategories={value => setField('categories', value)} onUpdateBudget={value => setField('budget', value)} onUpdateCardBanks={value => setField('cardBanks', value)} onUpdateCardSettings={value => setField('cardSettings', value)} onCloudSync={(url, upload) => controller.sync(url, upload)} onResetData={() => controller.update(() => initialData())} currentScriptUrl={sync.url} syncStatus={sync.status} onExportBackup={downloadBackup} onImportBackup={value => controller.update(() => value)} />}
+              {activeTab === Tab.SETTINGS && <Settings transactions={data.transactions} onDeleteCard={bank => controller.update(current => deleteCard(current, bank), true)} categories={data.categories} budget={data.budget} cardBanks={data.cardBanks} cardSettings={data.cardSettings} onUpdateCategories={value => setField('categories', value)} onUpdateBudget={value => setField('budget', value)} onUpdateCardBanks={value => setField('cardBanks', value)} onUpdateCardSettings={value => setField('cardSettings', value)} onCloudSync={(url, upload) => controller.sync(url, upload)} onResetData={() => controller.update(() => initialData())} currentScriptUrl={sync.url} syncStatus={sync.status} onExportBackup={downloadBackup} onImportBackup={value => controller.update(() => value)} />}
             </Suspense></PageBoundary>}
         </div>
       </main>
