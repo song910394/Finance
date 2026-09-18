@@ -3,7 +3,8 @@ import { Transaction, PaymentMethod } from '../types';
 import { getCategoryColor } from '../constants';
 import { formatLocalDate, shiftYearMonth } from '../utils/billing';
 import { buildTransactionSchedule, clampTransactionPage, dateAtMonthOffset, isValidTransactionDate, needsReconciliationReset, parseMoney, prepareTransactionEdit, TransactionDraft } from '../utils/transactions';
-import { previewTransactionImport, selectedImportTransactions, transactionExportRows, TRANSACTION_EXPORT_HEADERS, TransactionImportPreview } from '../utils/transactionImport';
+import { selectedImportTransactions, transactionExportRows, TRANSACTION_EXPORT_HEADERS, TransactionImportPreview } from '../utils/transactionImport';
+import { previewTransactionFile } from '../utils/transactionWorkbook';
 import { Plus, Search, Trash2, Pencil, X, Download, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface TransactionListProps {
@@ -150,18 +151,14 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, categor
         setIsFileBusy(true);
         setImportFileName(file.name);
         setIncludedDuplicates([]);
+        setPreview(null);
         try {
-            const XLSX = await import('xlsx');
-            const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-            if (!firstSheet) throw new Error('找不到工作表');
-            const matrix = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, raw: true, defval: '', blankrows: true });
-            setPreview(previewTransactionImport(matrix, transactions, { date1904: workbook.Workbook?.WBProps?.date1904 === true }));
-        } catch { setPreview({ rows: [], errors: ['無法讀取此檔案，請確認是有效的 Excel 活頁簿。'] }); }
+            setPreview(await previewTransactionFile(file, transactions));
+        }
         finally { setIsFileBusy(false); }
     };
     const confirmImport = () => {
-        if (!preview || hasImportErrors || selectedImports.length === 0) return;
+        if (isFileBusy || !preview || hasImportErrors || selectedImports.length === 0) return;
         onAddTransactions(selectedImports, Array.from(new Set(selectedImports.map(transaction => transaction.category).filter(value => !categories.includes(value)))), Array.from(new Set(selectedImports.map(transaction => transaction.cardBank).filter(value => value !== '-' && !cardBanks.includes(value)))));
         setNotice(`已匯入 ${selectedImports.length} 筆資料；略過 ${duplicateCount - includedDuplicates.length} 筆疑似重複資料。`);
         setPreview(null);

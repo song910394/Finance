@@ -7,8 +7,9 @@ export default defineConfig({
   base: '/Finance/',
   server: {
     port: 5040,
-    host: '0.0.0.0',
+    host: '127.0.0.1',
   },
+  preview: { host: '127.0.0.1' },
   plugins: [react()],
   define: {
     '__APP_VERSION__': JSON.stringify(pkg.version)

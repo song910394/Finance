@@ -12,6 +12,23 @@ dist
 dist-ssr
 *.local
 
+# 本機環境與秘密；僅保留不含秘密的設定範例
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.env
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+.npmrc
+credentials*.json
+service-account*.json
+id_rsa
+id_ed25519
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

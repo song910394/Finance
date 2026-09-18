@@ -13,9 +13,9 @@ npm run dev:isolated
 
 開啟 <http://127.0.0.1:5042/Finance/>。這個入口只使用合成資料；雲端 API 在記憶體模擬，CSP 禁止外部連線，不讀取環境檔。停止程序會重設模擬雲端，瀏覽器草稿仍會保留；重新啟動時若版本不同，請依提示選擇版本。
 
-`npm run dev` 是一般開發模式，使用原有連線設定，網址為 <http://localhost:5040/Finance/>。一般模式會讀取並自動同步設定的 Google Apps Script 帳本，請先確認使用的是指定測試帳本。
+`npm run dev` 是一般開發模式，預設只監聽 `127.0.0.1`，網址為 <http://127.0.0.1:5040/Finance/>。一般模式會讀取並自動同步設定的 Google Apps Script 帳本，請先確認使用的是指定測試帳本。`npm run preview` 也只監聽 `127.0.0.1`。
 
-現有 Recharts 2.13 與 React 19 的 peer dependency 宣告不一致，因此安裝沿用專案的 `--legacy-peer-deps`。這次沒有升級執行期套件。
+現有 Recharts 2.13 與 React 19 的 peer dependency 宣告不一致，因此安裝沿用專案的 `--legacy-peer-deps`。SheetJS 使用[官方 CDN 提供的 0.20.3](https://docs.sheetjs.com/docs/getting-started/installation/nodejs/)，npm registry 的 `xlsx` 舊版不能取代此安全更新來源。
 
 ## 資料與操作流程
 
@@ -24,6 +24,8 @@ npm run dev:isolated
 3. 本機與雲端不同或其他分頁更新時，暫停自動上傳，由使用者先備份再選擇版本。「其他本機草稿」可載入、刪除單份或清除已處理備份；正在使用的草稿須先完成版本選擇。刪除只影響備份，版本替換時不重複保留相同內容。
 4. 手動切換網址要經下載或上傳流程確認成功；失敗重試保留原方向與目的地。
 5. JSON 完整備份包含交易、信用卡設定、月度帳務、入帳來源及薪資歷程。Excel 僅交換交易明細，匯入先檢核與預覽，重複資料需個別確認。
+
+Excel 單檔上限為 10 MiB（`utils/transactionWorkbook.ts` 統一定義）；超過上限會在讀檔及解析前拒絕。讀檔、解析或資料驗證失敗都不會匯入任何交易，請修正後重新選檔。檔案大小限制不能取代 Excel 套件的安全更新，也無法保證壓縮檔展開後的記憶體用量。
 
 概覽、記帳、信用卡與帳務共用選取月份。帳務與帳單未儲存的輸入，在離頁前會提示。
 
@@ -69,6 +71,8 @@ npm run build
 GitHub Actions 在 build 前執行型別檢查與測試。產物路徑為 `dist`，網站 base 為 `/Finance/`。push、Actions、Pages 部署與正式環境資料驗收各自確認，不由本機測試推定已上線。
 
 Google Apps Script 後端不在此 repository。本機驗證不能證明後端權限、備份政策或跨裝置同時寫入的版本鎖定；這些需取得後端來源後另行確認。
+
+GAS 網址是端點識別資訊，不能當作身分驗證。確認雲端授權至少需要後端 `doGet`／`doPost`、身分與帳本授權邏輯、部署存取範圍及執行身分；不可將秘密放進前端程式或 `VITE_*`。本機帳本、草稿與復原資料以明文 JSON 存在 localStorage，同源程式與可存取瀏覽器設定檔的人員仍可能讀取；現有 key、格式與復原機制維持不變。
 
 ### 奶霜馬卡龍版面
 
