@@ -1,4 +1,5 @@
 import type { FinanceData } from '../types';
+import { validateLeaveData } from './leave';
 export type { FinanceData } from '../types';
 const object = (value: unknown): value is Record<string, any> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -78,7 +79,17 @@ export function parseBackup(input: unknown): FinanceData {
     requireValue(object(item) && string(item.id) && (month(item.date) || date(item.date)) && string(item.adjustmentItem), '薪資歷程');
     for (const key of ['totalSalary', 'adjustmentAmount', 'laborInsurance', 'healthInsurance', 'mealCost', 'welfareFund']) requireValue(number(item[key]), `薪資${key}`);
   });
-  return JSON.parse(JSON.stringify({ ...data, incomeSources, budgets, salaryAdjustments }));
+  const leavePeriods = data.leavePeriods === undefined ? [] : data.leavePeriods;
+  const leaveRecords = data.leaveRecords === undefined ? [] : data.leaveRecords;
+  validateLeaveData(leavePeriods, leaveRecords);
+  return JSON.parse(JSON.stringify({ ...data, incomeSources, budgets, salaryAdjustments, leavePeriods, leaveRecords }));
+}
+
+/** Inspect the source before normalization so an old full restore cannot hide its impact. */
+export function backupMissingLeave(input: unknown): boolean {
+  const raw = typeof input === 'string' ? JSON.parse(input) : input;
+  const data = object(raw) && raw.format === 'hs-finance-backup' ? raw.data : raw;
+  return object(data) && data.leavePeriods === undefined && data.leaveRecords === undefined;
 }
 
 export function serializeBackup(data: FinanceData): string {

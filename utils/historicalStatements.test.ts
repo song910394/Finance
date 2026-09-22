@@ -3,7 +3,7 @@ import { FinanceData, PaymentMethod, Transaction } from '../types';
 import { assignHistoricalStatements } from './historicalStatements';
 import { parseBackup, serializeBackup } from './backup';
 const tx = (id: string, date: string, extra: Partial<Transaction> = {}): Transaction => ({ id, date, amount: 100, category: '其他', description: id, cardBank: '測試卡', paymentMethod: PaymentMethod.CREDIT_CARD, isReconciled: false, ...extra });
-const data = (transactions: Transaction[]): FinanceData => ({ transactions, budget: 100, categories: ['其他'], cardBanks: ['測試卡'], cardSettings: {}, incomeSources: [], budgets: [], salaryAdjustments: [] });
+const data = (transactions: Transaction[]): FinanceData => ({ transactions, budget: 100, categories: ['其他'], cardBanks: ['測試卡'], cardSettings: {}, incomeSources: [], budgets: [], salaryAdjustments: [], leavePeriods: [], leaveRecords: [] });
 describe('一次性歷史帳单歸月', () => {
     it('涵蓋 7 月底、保留 8 月與較新紀錄、既有歸月、現金及原核銷日期', () => {
         const input = data([tx('old', '2025-12-01'), tx('july', '2026-07-31', { isReconciled: true, reconciledDate: '2026-08-20T00:00:00Z' }), tx('august', '2026-08-01'), tx('later', '2026-09-01'), tx('assigned', '2026-07-01', { statementMonth: '2026-08', isReconciled: true }), tx('cash', '2026-07-01', { paymentMethod: PaymentMethod.CASH })]);

@@ -11,7 +11,7 @@ describe('salary input and editing', () => {
     it('saves the month-based salary form through the real controller and backup boundary', async () => {
         const storage = new Map<string, string>();
         const controller = createFinanceSync({
-            initialData: { transactions: [], categories: ['其他'], budget: 50000, cardBanks: ['-'], cardSettings: {}, incomeSources: [], budgets: [], salaryAdjustments: [] },
+            initialData: { transactions: [], categories: ['其他'], budget: 50000, cardBanks: ['-'], cardSettings: {}, incomeSources: [], budgets: [], salaryAdjustments: [], leavePeriods: [], leaveRecords: [] },
             initialUrl: '',
             storage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => { storage.set(key, value); } },
             load: async () => { throw new Error('This test must not load from the cloud'); },

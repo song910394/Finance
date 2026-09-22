@@ -69,6 +69,25 @@ export interface BackupData {
   incomeSources?: IncomeSource[];
   budgets?: MonthlyBudget[];
   salaryAdjustments?: SalaryAdjustment[];
+  leavePeriods?: LeavePeriod[];
+  leaveRecords?: LeaveRecord[];
+}
+
+export interface LeavePeriod {
+  id: string;
+  name?: string;
+  startDate: string;
+  endDate: string;
+  totalHours: number;
+}
+
+export interface LeaveRecord {
+  id: string;
+  periodId: string;
+  date: string;
+  hours: number;
+  completed: boolean;
+  note?: string;
 }
 
 // 載入邊界正規化後，所有集合都存在；原始紀錄欄位仍完整保留。

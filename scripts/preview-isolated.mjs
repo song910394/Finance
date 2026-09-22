@@ -17,6 +17,15 @@ const fixture = () => ({
   incomeSources: [{ id: 'source-1', name: '合成薪資' }],
   budgets: [{ month: '2026-09', openingBalance: 10000, incomes: [{ sourceId: 'source-1', amount: 40000 }], loan: 5000, creditCards: [] }],
   salaryAdjustments: [],
+  leavePeriods: [
+    { id: 'leave-2026', name: '2026 合成年假', startDate: '2026-01-01', endDate: '2026-12-31', totalHours: 120 },
+    { id: 'leave-cross', name: '跨年合成期間', startDate: '2024-07-01', endDate: '2025-06-30', totalHours: 40 },
+  ],
+  leaveRecords: [
+    { id: 'leave-used', periodId: 'leave-2026', date: '2026-01-05', hours: 24, completed: true, note: '合成已休' },
+    { id: 'leave-plan-1', periodId: 'leave-2026', date: '2026-01-06', hours: 8, completed: false, note: '合成上午' },
+    { id: 'leave-plan-2', periodId: 'leave-2026', date: '2026-01-07', hours: 8, completed: false, note: '合成下午' },
+  ],
 });
 const books = new Map();
 const counts = { loads: 0, saves: 0 };

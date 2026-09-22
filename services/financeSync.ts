@@ -39,7 +39,7 @@ const message = (error: unknown) => error instanceof Error ? error.message : 'Âê
 
 export function createFinanceSync(options: Options) {
   const initial = parseBackup(options.initialData);
-  const empty = parseBackup({ ...initial, transactions: [], budgets: [], salaryAdjustments: [] });
+  const empty = parseBackup({ ...initial, transactions: [], budgets: [], salaryAdjustments: [], leavePeriods: [], leaveRecords: [] });
   const load = options.load ?? loadFromGoogleSheet;
   const save = options.save ?? saveToGoogleSheet;
   const listeners = new Set<() => void>();
@@ -279,7 +279,7 @@ export function createFinanceSync(options: Options) {
       const currentDraft = sameEndpoint && snapshot.dirty ? snapshot.data : local.draft && (local.draft.dirty || localChanged) ? local.draft.data : null;
       const chosenLocal = currentDraft && (!acceptCloud || changedHereWhileLoading || localChanged) ? currentDraft : null;
       const hasDraftConflict = chosenLocal !== null && !same(chosenLocal, remote);
-      if (acceptCloud && !hasDraftConflict) preserveReplacedDraft(url, local.draft, remote);
+      if (!hasDraftConflict) preserveReplacedDraft(url, local.draft, remote);
       const recoveries = readRecoveries(url);
       if (!sameEndpoint) selectedRecovery = null;
       storageBaseline = local.raw;

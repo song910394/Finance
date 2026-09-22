@@ -16,7 +16,7 @@ describe('backup boundaries', () => {
   it('round trips unknown fields and defaults only missing optional arrays', () => {
     const normalized = parseBackup(base());
     const restored = parseBackup(serializeBackup(normalized));
-    expect(restored).toEqual({ ...base(), incomeSources: [], budgets: [], salaryAdjustments: [] });
+    expect(restored).toEqual({ ...base(), incomeSources: [], budgets: [], salaryAdjustments: [], leavePeriods: [], leaveRecords: [] });
   });
   it('rejects malformed records without silently replacing them', () => {
     expect(() => parseBackup({ ...base(), transactions: {} })).toThrow();

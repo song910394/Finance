@@ -5,7 +5,7 @@ import type { BackupData } from '../types';
 
 const A = 'https://example.test/a';
 const B = 'https://example.test/b';
-const data = (budget = 100): FinanceData => ({ transactions: [], categories: ['其他'], budget, cardBanks: ['-'], cardSettings: {}, incomeSources: [], budgets: [], salaryAdjustments: [] });
+const data = (budget = 100): FinanceData => ({ transactions: [], categories: ['其他'], budget, cardBanks: ['-'], cardSettings: {}, incomeSources: [], budgets: [], salaryAdjustments: [], leavePeriods: [], leaveRecords: [] });
 function memory() {
   const values = new Map<string, string>();
   return { values, get length() { return values.size; }, key: (index: number) => [...values.keys()][index] ?? null, getItem: (key: string) => values.get(key) ?? null, removeItem: (key: string) => { values.delete(key); }, setItem: (key: string, value: string) => { values.set(key, value); } };
