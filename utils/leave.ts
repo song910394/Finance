@@ -1,6 +1,6 @@
 import type { LeavePeriod, LeavePurpose, LeaveRecord } from '../types';
 
-export const leavePurposeLabels: Record<LeavePurpose, string> = { family: '家庭', association: '協會', unclassified: '未分類' };
+export const leavePurposeLabels: Record<LeavePurpose, string> = { family: '家庭', association: '協會', lover: '情人', unclassified: '未分類' };
 export const isReservedLeave = (record: LeaveRecord) => record.kind === 'reserved';
 
 // Technical bounds only: no assumption about leave units or hours per working day.
@@ -54,7 +54,7 @@ export function summarizeLeave(period: LeavePeriod | undefined, records: LeaveRe
 }
 export function summarizeLeavePurposes(period: LeavePeriod | undefined, records: LeaveRecord[]): Record<LeavePurpose, number> {
   summarizeLeave(period, records); // Share the same total precision and overflow guard.
-  const result = { family: 0, association: 0, unclassified: 0 };
+  const result = { family: 0, association: 0, lover: 0, unclassified: 0 };
   for (const record of records) if (record.periodId === period?.id && !isReservedLeave(record) && record.completed) result[record.purpose ?? 'unclassified'] += hourCents(record.hours);
   return result;
 }
@@ -79,7 +79,7 @@ export function validateLeaveData(periods: unknown, records: unknown, today = ta
     const period = periods.find(item => item.id === record.periodId);
     requireLeave(typeof record.periodId === 'string' && period !== undefined, '找不到休假所屬年度');
     requireLeave(record.kind === undefined || record.kind === 'dated' || record.kind === 'reserved', '休假種類');
-    requireLeave(record.purpose === undefined || record.purpose === 'family' || record.purpose === 'association' || record.purpose === 'unclassified', '用途分類');
+    requireLeave(record.purpose === undefined || record.purpose === 'family' || record.purpose === 'association' || record.purpose === 'lover' || record.purpose === 'unclassified', '用途分類');
     hourCents(record.hours as number);
     requireLeave(typeof record.completed === 'boolean', '已休畢必須為 boolean');
     if (record.kind === 'reserved') {
@@ -104,7 +104,7 @@ export function prepareLeavePeriod(input: LeavePeriodInput, id: string, records:
   return period;
 }
 export function prepareLeaveRecord(input: LeaveRecordInput, id: string, period: LeavePeriod, today = taipeiToday()): LeaveRecord {
-  if (input.purpose === '') throw new Error('請選擇休假用途（家庭或協會）。');
+  if (input.purpose === '') throw new Error('請選擇休假用途（家庭、協會或情人）。');
   const record: LeaveRecord = { id, periodId: period.id, ...(input.kind ? { kind: input.kind } : {}), ...(input.kind === 'reserved' ? {} : { date: input.date }), ...(input.purpose ? { purpose: input.purpose } : {}), hours: parseHourCents(input.hours) / 100, completed: input.completed, note: input.note.trim() };
   if (input.kind === 'reserved' && input.date) throw new Error('保留時數不可填日期。');
   validateLeaveData([period], [record], today);

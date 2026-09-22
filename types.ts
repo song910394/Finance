@@ -81,7 +81,7 @@ export interface LeavePeriod {
   totalHours: number;
 }
 
-export type LeavePurpose = 'family' | 'association' | 'unclassified';
+export type LeavePurpose = 'family' | 'association' | 'lover' | 'unclassified';
 export interface LeaveRecord {
   id: string;
   periodId: string;

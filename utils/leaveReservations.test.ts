@@ -47,8 +47,10 @@ describe('保留時數與用途', () => {
   it('用途統計只算已休，舊紀錄未分類，全部零仍保留零而非捏造占比', () => {
     const dated = { id: 'd', periodId: 'p', date: today, hours: 8, completed: true };
     const rows = [reserve, dated, { ...dated, id: 'f', purpose: 'family' as const, hours: 4 }, { ...dated, id: 'a', purpose: 'association' as const, hours: 4 }, { ...dated, id: 'pending', purpose: 'family' as const, completed: false, hours: 50 }, { ...dated, id: 'other', periodId: 'other' }];
-    expect(summarizeLeavePurposes(period, rows)).toEqual({ family: 400, association: 400, unclassified: 800 });
-    expect(summarizeLeavePurposes(period, [reserve])).toEqual({ family: 0, association: 0, unclassified: 0 });
+    expect(summarizeLeavePurposes(period, rows)).toEqual({ family: 400, association: 400, lover: 0, unclassified: 800 });
+    expect(summarizeLeavePurposes(period, [reserve])).toEqual({ family: 0, association: 0, lover: 0, unclassified: 0 });
+    const lover = { ...dated, id: 'l', purpose: 'lover' as const, hours: 2 };
+    expect(summarizeLeavePurposes(period, [...rows, lover])).toMatchObject({ lover: 200 });
   });
   it('新備份保留種類、分類、保留時數與未知欄位；舊紀錄不被改寫', () => {
     const legacy = { id: 'old', periodId: 'p', date: today, hours: 8, completed: false };

@@ -359,6 +359,7 @@ dialog[aria-labelledby="transaction-dialog-title"] form :is(input,select):not([t
 .leave-purpose { display: inline-flex; align-items: center; padding: .1rem .5rem; border-radius: .5rem; white-space: nowrap; font-size: .8rem; line-height: 1.5; }
 .leave-purpose-family { background: #f9d6c6; color: #7c3f2c; }
 .leave-purpose-association { background: #dfd0f5; color: #5c3c87; }
+.leave-purpose-lover { background: #f7c8d8; color: #8a3152; }
 .leave-purpose-unclassified { background: #e7ebef; color: #536277; }
 .leave-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 1rem; }
 .leave-column { min-width: 0; border: 1px solid var(--mint-line); background: #fffefd; border-radius: 1rem; overflow: hidden; }

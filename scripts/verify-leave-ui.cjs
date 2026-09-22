@@ -81,6 +81,7 @@ const financial = ({ leavePeriods, leaveRecords, ...rest }) => rest;
     passed.push('指定計算基準、鍵盤勾選／取消、已休未休雙欄、刪除確認／取消、財務不變');
 
     await button('新增休假').click();
+    await expect(page.getByLabel('用途', { exact: true }).locator('option[value="lover"]')).toHaveText('情人');
     await page.getByLabel('用途', { exact: true }).selectOption('family');
     assert.equal(await page.getByLabel('休假時數', { exact: true }).inputValue(), '');
     assert.equal(await page.getByRole('checkbox', { name: '已休畢', exact: true }).isChecked(), false);
