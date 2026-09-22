@@ -37,6 +37,9 @@
   --shadow-glow: 0 0 15px rgba(79, 70, 229, 0.3);
 }
 
+/* Main owns page scrolling. App.tsx also contains absolute accessibility labels
+   within main so long lists cannot enlarge the outer document. */
+html, body, #root { height: 100%; min-height: 0; overflow: hidden; }
 body {
   font-size: 1.0625rem;
   font-family: var(--font-body);
@@ -329,4 +332,86 @@ dialog[aria-labelledby="transaction-dialog-title"] form :is(input,select):not([t
 }
 @media (min-width: 1440px) {
   .dashboard-layout .category-ranking-many { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+/* Annual leave: compact rows, one shared page scroll, purpose and status colors. */
+.leave-page { display: grid; gap: 1rem; min-width: 0; }
+.leave-period-controls { display: flex; flex-wrap: wrap; align-items: end; gap: .5rem; max-width: 100%; }
+.leave-period-controls label { max-width: 19rem; flex: 1 1 12rem; }
+.leave-overview { display: grid; grid-template-columns: minmax(0, 2fr) minmax(15rem, 1fr); gap: 1rem; }
+.leave-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; }
+.leave-stat { min-width: 0; padding: .85rem 1rem; border: 1px solid #e4dae9; border-radius: 1rem; background: white; overflow-wrap: anywhere; }
+.leave-stat h3 { font-size: .875rem; font-weight: 700; }
+.leave-stat-number { font-size: 1.9rem; line-height: 1.3; font-weight: 800; font-variant-numeric: tabular-nums; margin: .3rem 0; animation: leave-number 200ms ease-out; }
+.leave-stat-number small { font-size: .8rem; font-weight: 400; margin-left: .3rem; }
+.leave-stat-hint { font-size: .8rem; line-height: 1.5; color: #536277; }
+.leave-stat-0 { background: var(--lavender); border-color: var(--lavender-line); }
+.leave-stat-1 { background: var(--mint); border-color: var(--mint-line); }
+.leave-stat-4 { background: #7658a1; border-color: #7658a1; color: white; box-shadow: 0 4px 12px #7658a11c; }
+.leave-stat-4 .leave-stat-hint { color: #fff4fc; }
+.leave-stat-4 > .text-rose-700 { color: #fff5cf; }
+.leave-stat-2, .leave-stat-3, .leave-stat-5 { padding-top: .6rem; padding-bottom: .6rem; }
+.leave-stat-2 .leave-stat-number, .leave-stat-3 .leave-stat-number, .leave-stat-5 .leave-stat-number { font-size: 1.3rem; }
+.leave-stat-5 { background: var(--butter); border-color: var(--butter-line); }
+.leave-purpose-summary { min-width: 0; padding: 1rem 1.25rem; border: 1px solid #e6dcec; border-radius: 1rem; background: #fffdf9; }
+.leave-purpose-track { display: flex; height: .9rem; overflow: hidden; border-radius: 1rem; background: #ece8f0; margin: 1rem 0; }
+.leave-purpose-track > span { transition: width 220ms ease; }
+.leave-purpose { display: inline-flex; align-items: center; padding: .1rem .5rem; border-radius: .5rem; white-space: nowrap; font-size: .8rem; line-height: 1.5; }
+.leave-purpose-family { background: #f9d6c6; color: #7c3f2c; }
+.leave-purpose-association { background: #dfd0f5; color: #5c3c87; }
+.leave-purpose-unclassified { background: #e7ebef; color: #536277; }
+.leave-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 1rem; }
+.leave-column { min-width: 0; border: 1px solid var(--mint-line); background: #fffefd; border-radius: 1rem; overflow: hidden; }
+.leave-pending { border-color: var(--sky-line); }
+.leave-column-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; padding: .75rem 1rem; background: var(--mint); font-size: .95rem; }
+.leave-pending .leave-column-heading { background: var(--sky); }
+.leave-column-heading h4 { display: flex; align-items: center; gap: .4rem; font-weight: 700; }
+.leave-column-heading h4 span { font-size: .8rem; font-weight: 400; }
+.leave-column-heading strong { font-size: .9rem; font-variant-numeric: tabular-nums; }
+.leave-group-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .25rem; padding: .55rem 1rem; font-size: .8rem; color: #526376; background: #f4f9fe; }
+.leave-group-heading > span { display: inline-flex; align-items: center; gap: .3rem; }
+.leave-reservations { background: #fffdf6; }
+.leave-reservations .leave-group-heading { background: var(--butter); color: #765723; border-top: 1px solid var(--butter-line); }
+.leave-add-reserve { background: var(--butter) !important; border-color: var(--butter-line) !important; color: #765723; }
+.leave-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .1rem .5rem; padding: .45rem .75rem; border-bottom: 1px solid #e9e9eb; font-size: .9rem; animation: leave-enter 180ms ease-out; }
+.leave-row:last-child { border-bottom: 0; }
+.leave-row-info { min-width: 0; }
+.leave-row-title { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; }
+.leave-check { display: inline-flex; gap: .45rem; align-items: center; font-weight: 600; cursor: pointer; font-variant-numeric: tabular-nums; }
+.leave-check input { width: 1.05rem; height: 1.05rem; accent-color: #608f76; flex-shrink: 0; }
+.leave-check:has(input:disabled) { cursor: default; }
+.leave-row-state { font-size: .75rem; line-height: 1.4; color: #5b6878; margin-top: .1rem; }
+.leave-row-hours { font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; max-width: 10rem; }
+.leave-row-hours small { font-size: .75rem; font-weight: 400; }
+.leave-row-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; }
+.leave-row-actions button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 40px; border-radius: .65rem; transition: background 150ms ease; }
+.leave-row-actions button:hover { background: #efe9f8; }
+.leave-row-actions .leave-schedule { padding: 0 .4rem; font-size: .8rem; font-weight: 600; color: #765723; }
+.leave-row-note { grid-column: 1 / -1; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; color: #536277; line-height: 1.5; padding-bottom: .15rem; }
+.leave-empty { font-size: .875rem; padding: 1.15rem 1rem; color: #64748b; }
+.leave-dialog { margin: auto; width: min(38rem, calc(100% - 1.5rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #d4c3ec; border-radius: 1.25rem; background: #fffaf6; box-shadow: 0 16px 50px #372b5630; }
+.leave-dialog[open] { animation: leave-enter 180ms ease-out; }
+.leave-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .75rem 1rem; background: var(--lavender); }
+.leave-dialog input, .leave-dialog select, .leave-dialog textarea { max-width: 100%; }
+@keyframes leave-enter { from { opacity: .6; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes leave-number { from { opacity: .5; } to { opacity: 1; } }
+@media (max-width: 1199px) {
+  .leave-overview { grid-template-columns: minmax(0, 1fr); }
+  .leave-purpose-summary ul { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; }
+  .leave-purpose-summary ul li { margin: 0; flex: 1 1 12rem; }
+  .leave-columns { grid-template-columns: minmax(0, 1fr); }
+  .leave-pending { order: -1; }
+}
+@media (max-width: 639px) {
+  .leave-period-controls { width: 100%; }
+  .leave-period-controls label { flex-basis: 100%; max-width: none; }
+  .leave-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .leave-stat { padding: .75rem; }
+  .leave-stat-4 { grid-column: 1 / -1; grid-row: 1; }
+  .leave-stat-3 { grid-column: 1 / -1; }
+  .leave-stat-4 .leave-stat-number { font-size: 2.1rem; }
+  .leave-row { grid-template-columns: minmax(0, 1fr) auto; padding: .6rem .75rem; }
+  .leave-row-actions { grid-column: 1 / -1; justify-content: end; grid-row: 3; }
+  .leave-row-actions button { min-width: 44px; }
+  .leave-row-note { grid-row: 2; margin-top: .25rem; }
 }

@@ -81,10 +81,15 @@ export interface LeavePeriod {
   totalHours: number;
 }
 
+export type LeavePurpose = 'family' | 'association' | 'unclassified';
 export interface LeaveRecord {
   id: string;
   periodId: string;
-  date: string;
+  // Missing kind/purpose are legacy dated/unclassified records. The load boundary
+  // requires dates for dated records and forbids dates/completion for reservations.
+  kind?: 'dated' | 'reserved';
+  purpose?: LeavePurpose;
+  date?: string;
   hours: number;
   completed: boolean;
   note?: string;

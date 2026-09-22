@@ -1,4 +1,7 @@
-import type { LeavePeriod, LeaveRecord } from '../types';
+import type { LeavePeriod, LeavePurpose, LeaveRecord } from '../types';
+
+export const leavePurposeLabels: Record<LeavePurpose, string> = { family: '家庭', association: '協會', unclassified: '未分類' };
+export const isReservedLeave = (record: LeaveRecord) => record.kind === 'reserved';
 
 // Technical bounds only: no assumption about leave units or hours per working day.
 export const MAX_LEAVE_CENTS = 999_999_999_999;
@@ -38,15 +41,22 @@ export function defaultLeavePeriod(periods: LeavePeriod[], today = taipeiToday()
   return [...(current.length ? current : periods)].sort((a, b) => b.startDate.localeCompare(a.startDate) || b.endDate.localeCompare(a.endDate) || a.id.localeCompare(b.id))[0]?.id ?? '';
 }
 export function summarizeLeave(period: LeavePeriod | undefined, records: LeaveRecord[]) {
-  if (!period) return { total: null, used: null, planned: null, remaining: null, available: null };
+  if (!period) return { total: null, used: null, planned: null, remaining: null, available: null, reserved: null };
   const total = hourCents(period.totalHours, true);
-  let used = 0, planned = 0;
+  let used = 0, planned = 0, reserved = 0;
   for (const record of records.filter(item => item.periodId === period.id)) {
     const cents = hourCents(record.hours);
-    if (record.completed) used += cents; else planned += cents;
-    if (!Number.isSafeInteger(used + planned) || used + planned > MAX_LEAVE_CENTS) throw new Error('年度已登記時數合計超出支援範圍。');
+    if (isReservedLeave(record)) reserved += cents;
+    else if (record.completed) used += cents; else planned += cents;
+    if (!Number.isSafeInteger(used + planned + reserved) || used + planned + reserved > MAX_LEAVE_CENTS) throw new Error('年度已登記時數合計超出支援範圍。');
   }
-  return { total, used, planned, remaining: total - used, available: total - used - planned };
+  return { total, used, planned, remaining: total - used, available: total - used - planned - reserved, reserved };
+}
+export function summarizeLeavePurposes(period: LeavePeriod | undefined, records: LeaveRecord[]): Record<LeavePurpose, number> {
+  summarizeLeave(period, records); // Share the same total precision and overflow guard.
+  const result = { family: 0, association: 0, unclassified: 0 };
+  for (const record of records) if (record.periodId === period?.id && !isReservedLeave(record) && record.completed) result[record.purpose ?? 'unclassified'] += hourCents(record.hours);
+  return result;
 }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const requireLeave = (ok: unknown, message: string): void => { if (!ok) throw new Error(`年假資料格式不正確：${message}`); };
@@ -68,28 +78,52 @@ export function validateLeaveData(periods: unknown, records: unknown, today = ta
     recordIds.add(record.id as string);
     const period = periods.find(item => item.id === record.periodId);
     requireLeave(typeof record.periodId === 'string' && period !== undefined, '找不到休假所屬年度');
-    requireLeave(isLeaveDate(record.date) && record.date >= period.startDate && record.date <= period.endDate, `休假日期 ${String(record.date)} 不在年度期間內或不是有效日期`);
+    requireLeave(record.kind === undefined || record.kind === 'dated' || record.kind === 'reserved', '休假種類');
+    requireLeave(record.purpose === undefined || record.purpose === 'family' || record.purpose === 'association' || record.purpose === 'unclassified', '用途分類');
     hourCents(record.hours as number);
     requireLeave(typeof record.completed === 'boolean', '已休畢必須為 boolean');
-    requireLeave(!record.completed || (record.date as string) <= today, '未來日期不可標記已休畢；請先取消已休畢');
+    if (record.kind === 'reserved') {
+      requireLeave(record.date === undefined && record.completed === false, '保留時數不可填日期或標記已休畢');
+    } else {
+      requireLeave(isLeaveDate(record.date) && record.date >= period.startDate && record.date <= period.endDate, `休假日期 ${String(record.date)} 不在年度期間內或不是有效日期`);
+      requireLeave(!record.completed || (record.date as string) <= today, '未來日期不可標記已休畢；請先取消已休畢');
+    }
     requireLeave(record.note === undefined || typeof record.note === 'string', '備註');
   }
   for (const period of periods) summarizeLeave(period, records);
 }
 export interface LeavePeriodInput { name: string; startDate: string; endDate: string; totalHours: string }
-export interface LeaveRecordInput { date: string; hours: string; completed: boolean; note: string }
+export interface LeaveRecordInput { date: string; hours: string; completed: boolean; note: string; kind?: 'dated' | 'reserved'; purpose?: LeavePurpose | '' }
 export function prepareLeavePeriod(input: LeavePeriodInput, id: string, records: LeaveRecord[], today = taipeiToday()): LeavePeriod {
   const period = { id, name: input.name.trim(), startDate: input.startDate, endDate: input.endDate, totalHours: parseHourCents(input.totalHours, true) / 100 };
   validateLeaveData([period], [], today);
   const related = records.filter(record => record.periodId === id);
-  const conflicts = related.filter(record => record.date < period.startDate || record.date > period.endDate);
+  const conflicts = related.filter(record => !isReservedLeave(record) && (record.date! < period.startDate || record.date! > period.endDate));
   if (conflicts.length) throw new Error('無法變更期間，以下休假會落在區間外：' + conflicts.map(record => `${record.date}（${formatHourCents(hourCents(record.hours))} 小時${record.note ? '，' + record.note : ''}）`).join('、'));
   validateLeaveData([period], related, today);
   return period;
 }
 export function prepareLeaveRecord(input: LeaveRecordInput, id: string, period: LeavePeriod, today = taipeiToday()): LeaveRecord {
-  const record = { id, periodId: period.id, date: input.date, hours: parseHourCents(input.hours) / 100, completed: input.completed, note: input.note.trim() };
+  if (input.purpose === '') throw new Error('請選擇休假用途（家庭或協會）。');
+  const record: LeaveRecord = { id, periodId: period.id, ...(input.kind ? { kind: input.kind } : {}), ...(input.kind === 'reserved' ? {} : { date: input.date }), ...(input.purpose ? { purpose: input.purpose } : {}), hours: parseHourCents(input.hours) / 100, completed: input.completed, note: input.note.trim() };
+  if (input.kind === 'reserved' && input.date) throw new Error('保留時數不可填日期。');
   validateLeaveData([period], [record], today);
   return record;
 }
-export const possibleDuplicateLeave = (candidate: LeaveRecord, records: LeaveRecord[]) => records.some(record => record.id !== candidate.id && record.periodId === candidate.periodId && record.date === candidate.date && hourCents(record.hours) === hourCents(candidate.hours));
+export const possibleDuplicateLeave = (candidate: LeaveRecord, records: LeaveRecord[]) => !isReservedLeave(candidate) && records.some(record => !isReservedLeave(record) && record.id !== candidate.id && record.periodId === candidate.periodId && record.date === candidate.date && hourCents(record.hours) === hourCents(candidate.hours));
+
+// One immutable result for one controller.update: never save a new date and the
+// reduced reservation separately. Full allocation retains the reservation ID.
+export function scheduleReservedLeave(records: LeaveRecord[], sourceId: string, input: LeaveRecordInput, newId: string, period: LeavePeriod, today = taipeiToday()): LeaveRecord[] {
+  const source = records.find(record => record.id === sourceId && record.periodId === period.id && isReservedLeave(record));
+  if (!source) throw new Error('找不到所選年度的保留時數，請重新開啟表單。');
+  const remaining = hourCents(source.hours) - parseHourCents(input.hours);
+  if (remaining < 0) throw new Error(`排定時數不可超過保留的 ${formatHourCents(hourCents(source.hours))} 小時。`);
+  const dated = { ...source, ...prepareLeaveRecord({ ...input, kind: 'dated', purpose: source.purpose ?? 'unclassified' }, remaining ? newId : source.id, period, today) };
+  const result = records.map(record => record.id === source.id ? (remaining ? { ...record, hours: remaining / 100 } : dated) : record);
+  if (remaining) result.push(dated);
+  validateLeaveData([period], result.filter(record => record.periodId === period.id), today);
+  // IDs are unique across the complete collection, including other periods.
+  if (new Set(result.map(record => record.id)).size !== result.length) throw new Error('休假識別碼重複。');
+  return result;
+}

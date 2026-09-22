@@ -11,7 +11,7 @@ const records: LeaveRecord[] = [
   { id: 'c', periodId: 'p', date: '2026-01-03', hours: 8, completed: false },
 ];
 const legacy = { transactions: [], categories: [], cardBanks: [], cardSettings: {}, budget: 100 };
-const summary = (items: LeaveRecord[]) => Object.values(summarizeLeave(period, items)).map(value => value! / 100);
+const summary = (items: LeaveRecord[]) => { const { total, used, planned, remaining, available } = summarizeLeave(period, items); return [total, used, planned, remaining, available].map(value => value! / 100); };
 
 describe('年假唯一統計來源', () => {
   it('120/24/16/96/80 → 勾選 → 取消 → 刪除，沒有重複扣除', () => {
@@ -22,8 +22,8 @@ describe('年假唯一統計來源', () => {
     expect(records[1].completed).toBe(false);
   });
   it('只計算選定年度，未設定與明確零額度不同', () => {
-    expect(summarizeLeave(undefined, records)).toEqual({ total: null, used: null, planned: null, remaining: null, available: null });
-    expect(summarizeLeave({ ...period, totalHours: 0 }, [])).toEqual({ total: 0, used: 0, planned: 0, remaining: 0, available: 0 });
+    expect(summarizeLeave(undefined, records)).toEqual({ total: null, used: null, planned: null, remaining: null, available: null, reserved: null });
+    expect(summarizeLeave({ ...period, totalHours: 0 }, [])).toEqual({ total: 0, used: 0, planned: 0, remaining: 0, available: 0, reserved: 0 });
     expect(summary([...records, { ...records[0], id: 'other', periodId: 'other' }])).toEqual([120, 24, 16, 96, 80]);
   });
   it('小數精確累加、編輯重算，超額保留負值', () => {

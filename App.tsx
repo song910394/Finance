@@ -118,7 +118,7 @@ export default function App() {
     { tab: Tab.RECONCILIATION, icon: <CreditCard size={20} /> }, { tab: Tab.BUDGET, icon: <PieChart size={20} /> },
     { tab: Tab.SALARY, icon: <Wallet size={20} /> }, { tab: Tab.LEAVE, icon: <CalendarDays size={20} /> }, { tab: Tab.SETTINGS, icon: <SettingsIcon size={20} /> },
   ];
-  return <div className="flex h-dvh min-h-0 overflow-hidden bg-slate-50 font-sans text-slate-800">
+  return <div className="relative flex h-full min-h-0 overflow-hidden bg-slate-50 font-sans text-slate-800">
     <a href="#main-content" className="sr-only z-[100] bg-white p-3 focus:not-sr-only focus:fixed">跳到主要內容</a>
     <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
       <div className="flex items-center gap-3 border-b border-slate-100 p-6"><span className="rounded-xl bg-indigo-600 p-2 text-white"><PieChart size={22} /></span><h1 className="text-xl font-bold">H&S記帳</h1></div>
@@ -126,7 +126,7 @@ export default function App() {
         className={'flex min-h-12 w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors ' + (activeTab === item.tab ? 'bg-indigo-50 font-bold text-indigo-700' : 'text-slate-600 hover:bg-slate-50')}>{item.icon}{item.tab}</button>)}</nav>
       <p className="border-t border-slate-100 p-4 text-xs text-slate-500">H&S記帳 v{__APP_VERSION__}</p>
     </aside>
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2 lg:px-8">
         <div className="flex items-center gap-2 font-bold"><PieChart size={20} className="text-indigo-600 lg:hidden" /><span className="lg:hidden">H&S記帳</span><span className="hidden lg:inline">{activeTab}</span></div>
         <div className="flex flex-wrap items-center gap-2">
@@ -134,11 +134,11 @@ export default function App() {
           <button type="button" aria-label="匯出完整備份" title="匯出完整備份" onClick={downloadBackup} disabled={loading} className="touch-target rounded-xl border border-slate-200 bg-white p-2 hover:bg-slate-50 disabled:opacity-50"><Download size={18} /></button>
         </div>
       </header>
-      <main id="main-content" className="min-h-0 flex-1 overflow-y-auto" tabIndex={-1}>
+      <main id="main-content" className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain" tabIndex={-1}>
         <div className="app-content mx-auto max-w-7xl space-y-4 p-4 md:p-6 lg:p-8">
           {sync.conflict && <section role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
             <h2 className="font-bold">{sync.conflict === 'tab' ? '另一個分頁已更新帳本' : '本機與雲端有不同版本'}</h2>
-            <p className="mt-2">自動上傳已暫停。目前本機有 {data.transactions.length} 筆交易、{data.leavePeriods.length} 個年假年度及 {data.leaveRecords.length} 筆休假。請先匯出完整備份，再選擇要保留的版本；交易、帳務、薪資與年假都將整份取代，所選版本沒有年假時現有年假也會清空，兩個版本不會自動合併。取代前會保留原版本，備份失敗即停止。</p>
+            <p className="mt-2">自動上傳已暫停。目前本機有 {data.transactions.length} 筆交易、{data.leavePeriods.length} 個年假年度及 {data.leaveRecords.length} 筆休假／保留紀錄。請先匯出完整備份，再選擇要保留的版本；交易、帳務、薪資與年假（含保留時數）都將整份取代，所選版本沒有年假時現有年假也會清空，兩個版本不會自動合併。取代前會保留原版本，備份失敗即停止。</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button type="button" onClick={downloadBackup} className="rounded-xl border border-amber-300 bg-white px-4 py-3">匯出本機備份</button>
               <button type="button" onClick={() => void runAction(() => controller.resolveConflict('local'))} className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white">以本機版本覆蓋雲端</button>

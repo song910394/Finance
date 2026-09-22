@@ -23,8 +23,9 @@ const fixture = () => ({
   ],
   leaveRecords: [
     { id: 'leave-used', periodId: 'leave-2026', date: '2026-01-05', hours: 24, completed: true, note: '合成已休' },
-    { id: 'leave-plan-1', periodId: 'leave-2026', date: '2026-01-06', hours: 8, completed: false, note: '合成上午' },
-    { id: 'leave-plan-2', periodId: 'leave-2026', date: '2026-01-07', hours: 8, completed: false, note: '合成下午' },
+    { id: 'leave-plan-1', periodId: 'leave-2026', date: '2026-01-06', hours: 8, completed: false, purpose: 'association', note: '合成上午' },
+    { id: 'leave-plan-2', periodId: 'leave-2026', date: '2026-01-07', hours: 8, completed: false, purpose: 'family', note: '合成下午' },
+    { id: 'leave-reserve', periodId: 'leave-2026', kind: 'reserved', hours: 24, completed: false, purpose: 'family', note: '合成保留，可分次排定' },
   ],
 });
 const books = new Map();
