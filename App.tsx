@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertCircle, CalendarDays, CheckCircle2, Cloud, CreditCard, Download, LayoutDashboard, List, MoreHorizontal, PieChart, RefreshCw, Settings as SettingsIcon, Wallet, X } from 'lucide-react';
+import { AlertCircle, CalendarDays, CheckCircle2, CreditCard, Download, LayoutDashboard, List, MoreHorizontal, PieChart, RefreshCw, Settings as SettingsIcon, Wallet, X } from 'lucide-react';
 import { CardBank, DEFAULT_CATEGORIES, type FinanceData, type SalaryAdjustment, type Transaction } from './types';
 import { DEFAULT_INCOME_SOURCES, GOOGLE_SCRIPT_URL } from './constants';
 import { createFinanceSync } from './services/financeSync';
@@ -47,20 +47,43 @@ export default function App() {
   const [hasUnsavedForm, setHasUnsavedForm] = useState(false);
   const [leaveFormRevision, setLeaveFormRevision] = useState(0);
   const moreDialog = useRef<HTMLDialogElement>(null);
+  const formDirty = useRef(false);
+  formDirty.current = hasUnsavedForm;
   useEffect(() => { void controller.start(); return () => controller.stop(); }, [controller]);
   useEffect(() => {
-    if (sync.conflict || sync.dirty || hasUnsavedForm || !['saved', 'local'].includes(sync.status) || !sync.localSaved) return;
+    if (sync.dirty || hasUnsavedForm || sync.status !== 'saved' || !sync.ready) return;
     if (assignHistoricalStatements(data) === data) return;
-    try { controller.update(assignHistoricalStatements, true); }
-    catch { setActionError('歷史帳單整理前的備份未成功，原始資料尚未變更。請確認本機儲存空間後重新載入。'); }
-  }, [controller, data, sync.status, sync.conflict, sync.dirty, sync.localSaved, hasUnsavedForm]);
+    try { controller.update(assignHistoricalStatements, { reapply: true }); }
+    catch { setActionError('歷史帳單整理未完成，請確認連線後重試。'); }
+  }, [controller, data, sync.status, sync.dirty, sync.ready, hasUnsavedForm]);
   useEffect(() => {
     const warnUnsaved = (event: BeforeUnloadEvent) => {
-      if (hasUnsavedForm || (sync.dirty && !sync.localSaved)) { event.preventDefault(); event.returnValue = ''; }
+      if (hasUnsavedForm || sync.dirty) { event.preventDefault(); event.returnValue = ''; }
     };
     window.addEventListener('beforeunload', warnUnsaved);
     return () => window.removeEventListener('beforeunload', warnUnsaved);
-  }, [sync.dirty, sync.localSaved, hasUnsavedForm]);
+  }, [sync.dirty, hasUnsavedForm]);
+  useEffect(() => {
+    const canRefresh = () => !document.hidden && !formDirty.current
+      && !document.querySelector('dialog[open]')
+      && !document.activeElement?.matches('input, textarea, select, [contenteditable="true"]');
+    const refresh = () => { if (canRefresh()) void controller.refresh(canRefresh); };
+    const reconnect = () => {
+      const current = controller.getSnapshot();
+      if (current.status === 'error' && (current.dirty || canRefresh())) void controller.retry().catch(() => undefined);
+      else refresh();
+    };
+    window.addEventListener('focus', refresh);
+    window.addEventListener('online', reconnect);
+    document.addEventListener('visibilitychange', refresh);
+    const timer = window.setInterval(refresh, 15000);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', reconnect);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [controller]);
   const setField = <K extends keyof FinanceData>(field: K, value: React.SetStateAction<FinanceData[K]>) => {
     controller.update(previous => ({ ...previous, [field]: typeof value === 'function'
       ? (value as (old: FinanceData[K]) => FinanceData[K])(previous[field]) : value }));
@@ -105,13 +128,12 @@ export default function App() {
   const loading = sync.status === 'loading';
   const busy = loading || sync.status === 'syncing';
   const lastTime = sync.lastSyncedAt ? new Date(sync.lastSyncedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-  const statusText = hasUnsavedForm ? '此頁有未儲存內容' : loading ? '正在載入帳本' : sync.status === 'conflict' ? '需要確認資料版本'
-    : sync.status === 'error' ? (sync.localSaved ? '已存本機・同步失敗' : '資料尚未安全保存')
-    : sync.status === 'saved' && !sync.dirty ? '已同步 ' + lastTime
-    : sync.status === 'syncing' ? (sync.localSaved ? '已存本機・同步中' : '同步中・本機未保存')
-    : sync.localSaved ? (sync.dirty && sync.url ? '已存本機・等待同步' : '已存本機') : '尚未連線';
-  const syncIcon = busy ? <RefreshCw size={16} className="animate-spin" /> : sync.status === 'error' || sync.conflict ? <AlertCircle size={16} />
-    : sync.status === 'saved' && !sync.dirty ? <CheckCircle2 size={16} /> : <Cloud size={16} />;
+  const statusText = hasUnsavedForm ? '此頁有未儲存內容' : loading ? '正在載入帳本'
+    : sync.status === 'error' ? (sync.dirty ? '尚未上傳・請重試' : '雲端連線失敗')
+    : sync.status === 'syncing' ? '正在上傳'
+    : '已同步 ' + lastTime;
+  const syncIcon = busy ? <RefreshCw size={16} className="animate-spin" /> : sync.status === 'error' ? <AlertCircle size={16} />
+    : <CheckCircle2 size={16} />;
   const monthProps = { selectedMonth, onMonthChange: setSelectedMonth };
   const navItems = [
     { tab: Tab.DASHBOARD, icon: <LayoutDashboard size={20} /> }, { tab: Tab.TRANSACTIONS, icon: <List size={20} /> },
@@ -130,44 +152,26 @@ export default function App() {
       <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2 lg:px-8">
         <div className="flex items-center gap-2 font-bold"><PieChart size={20} className="text-indigo-600 lg:hidden" /><span className="lg:hidden">H&S記帳</span><span className="hidden lg:inline">{activeTab}</span></div>
         <div className="flex flex-wrap items-center gap-2">
-          <span role="status" aria-live="polite" className={'flex items-center gap-1.5 rounded-full px-3 py-2 text-xs ' + (sync.status === 'error' || sync.conflict ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600')}>{syncIcon}{statusText}</span>
+          <span role="status" data-sync-status={sync.status} aria-live="polite" className={'flex items-center gap-1.5 rounded-full px-3 py-2 text-xs ' + (sync.status === 'error' ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600')}>{syncIcon}{statusText}</span>
           <button type="button" aria-label="匯出完整備份" title="匯出完整備份" onClick={downloadBackup} disabled={loading} className="touch-target rounded-xl border border-slate-200 bg-white p-2 hover:bg-slate-50 disabled:opacity-50"><Download size={18} /></button>
         </div>
       </header>
       <main id="main-content" className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain" tabIndex={-1}>
         <div className="app-content mx-auto max-w-7xl space-y-4 p-4 md:p-6 lg:p-8">
-          {sync.conflict && <section role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
-            <h2 className="font-bold">{sync.conflict === 'tab' ? '另一個分頁已更新帳本' : '本機與雲端有不同版本'}</h2>
-            <p className="mt-2">自動上傳已暫停。目前本機有 {data.transactions.length} 筆交易、{data.leavePeriods.length} 個年假年度及 {data.leaveRecords.length} 筆休假／保留紀錄。請先匯出完整備份，再選擇要保留的版本；交易、帳務、薪資與年假（含保留時數）都將整份取代，所選版本沒有年假時現有年假也會清空，兩個版本不會自動合併。取代前會保留原版本，備份失敗即停止。</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={downloadBackup} className="rounded-xl border border-amber-300 bg-white px-4 py-3">匯出本機備份</button>
-              <button type="button" onClick={() => void runAction(() => controller.resolveConflict('local'))} className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white">以本機版本覆蓋雲端</button>
-              <button type="button" onClick={() => void runAction(() => controller.resolveConflict('cloud'))} className="rounded-xl border border-amber-300 bg-white px-4 py-3">以雲端版本取代本機</button>
-            </div>
-          </section>}
-          {sync.recoveries.length > 0 && <details open={sync.recoveries.some(item => !item.reviewed)} className="rounded-2xl border border-amber-200 bg-white p-4 text-sm">
-            <summary className="cursor-pointer font-bold">其他本機草稿（{sync.recoveries.length} 個版本）</summary>
-            <p className="mt-2 text-slate-600">這些完整備份包含當時的交易、帳務、薪資與年假。載入會整份取代目前版本；若草稿沒有年假，現有年假也會清空。取代前先保留原版本，備份失敗即停止。載入後會暫停自動上傳；刪除只移除這份備份，不影響目前帳本或雲端資料。</p>
-            <button type="button" disabled={busy || !sync.recoveries.some(item => item.reviewed)} onClick={() => { const ids = sync.recoveries.filter(item => item.reviewed).map(item => item.id); if (window.confirm(`刪除 ${ids.length} 份已處理備份？刪除後無法復原，目前帳本與雲端資料不受影響。`)) void runAction(async () => controller.deleteRecoveries(ids)); }} className="mt-2 rounded-lg border px-3 py-2 disabled:opacity-50">清除已處理備份</button>
-            <ul className="mt-3 space-y-2">{sync.recoveries.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3">
-              <span>{item.savedAt ? new Date(item.savedAt).toLocaleString('zh-TW', { hour12: false }) : '時間待確認'} · {item.transactionCount} 筆交易 · {item.reviewed ? '已處理，保留備份' : '待確認'}</span>
-              <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => void runAction(async () => { controller.selectRecovery(item.id); })} className="rounded-xl border border-slate-200 bg-white px-4 py-3 font-bold text-indigo-700 disabled:opacity-50">載入此草稿</button><button type="button" disabled={busy} onClick={() => { if (window.confirm('刪除這份備份？刪除後無法復原，目前帳本與雲端資料不受影響。')) void runAction(async () => controller.deleteRecoveries([item.id])); }} className="rounded-xl border border-rose-200 px-3 py-2 text-rose-700 disabled:opacity-50">刪除</button></div>
-            </li>)}</ul>
-          </details>}
           {(sync.status === 'error' || actionError) && <section role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
             <p>{actionError || sync.error || '同步尚未完成，請確認連線後重試。'}</p>
-            <p className="mt-1">{sync.localSaved ? '本機資料已保留。' : '請先匯出完整備份，避免離開頁面後遺失資料。'}</p>
-            <div className="mt-3 flex gap-2"><button type="button" disabled={busy || Boolean(sync.conflict)} onClick={() => void runAction(() => controller.retry())} className="rounded-xl border border-rose-200 bg-white px-4 py-2 disabled:opacity-50">重試同步</button><button type="button" onClick={() => navigate(Tab.SETTINGS)} className="rounded-xl px-4 py-2 underline">檢查連線設定</button></div>
+            <p className="mt-1">{sync.dirty ? '修改尚未上傳，請保持此頁開啟並重試；離開前可先匯出完整備份。' : '請確認網路或連線設定後重試。'}</p>
+            <div className="mt-3 flex gap-2"><button type="button" disabled={busy} onClick={() => void runAction(() => controller.retry())} className="rounded-xl border border-rose-200 bg-white px-4 py-2 disabled:opacity-50">重試同步</button><button type="button" onClick={() => navigate(Tab.SETTINGS)} className="rounded-xl px-4 py-2 underline">檢查連線設定</button></div>
           </section>}
-          {loading ? <div role="status" className="rounded-2xl border border-slate-200 bg-white p-8 text-center"><RefreshCw className="mx-auto mb-3 animate-spin text-indigo-600" />正在載入帳本，完成後即可開始記帳。</div> :
-            <PageBoundary key={activeTab}><Suspense fallback={<p role="status" className="p-6 text-slate-500">正在開啟頁面…</p>}>
+          {loading || sync.pendingUrl ? <div role="status" className="rounded-2xl border border-slate-200 bg-white p-8 text-center"><RefreshCw className="mx-auto mb-3 animate-spin text-indigo-600" />正在同步帳本，完成後即可開始記帳。</div> :
+            !sync.ready && activeTab !== Tab.SETTINGS ? <p role="status" className="rounded-2xl bg-white p-6">請先連上雲端帳本，再開始編輯。</p> : <PageBoundary key={activeTab}><Suspense fallback={<p role="status" className="p-6 text-slate-500">正在開啟頁面…</p>}>
               {activeTab === Tab.DASHBOARD && <Dashboard {...monthProps} transactions={data.transactions} budget={data.budget} cardBanks={data.cardBanks} cardSettings={data.cardSettings} onAddExpense={openAddExpense} onOpenReconciliation={() => navigate(Tab.RECONCILIATION)} />}
               {activeTab === Tab.TRANSACTIONS && <TransactionList {...monthProps} transactions={data.transactions} categories={data.categories} cardBanks={data.cardBanks} onAddTransaction={addTransaction} onAddTransactions={addTransactions} onEditTransaction={editTransaction} onDeleteTransaction={deleteTransaction} onDeleteRecurringGroup={deleteRecurringGroup} onToggleReconcile={id => reconcileTransaction(id, null)} startAdding={startAdding} />}
               {activeTab === Tab.RECONCILIATION && <Reconciliation {...monthProps} transactions={data.transactions} cardBanks={data.cardBanks} cardSettings={data.cardSettings} onReconcile={reconcileTransaction} onUpdateCardSettings={value => setField('cardSettings', value)} onDirtyChange={setHasUnsavedForm} />}
               {activeTab === Tab.BUDGET && <BudgetManager {...monthProps} transactions={data.transactions} cardBanks={data.cardBanks} cardSettings={data.cardSettings} incomeSources={data.incomeSources} budgets={data.budgets} onUpdateIncomeSources={value => setField('incomeSources', value)} onUpdateBudgets={value => setField('budgets', value)} onDirtyChange={setHasUnsavedForm} />}
               {activeTab === Tab.SALARY && <SalaryHistory adjustments={data.salaryAdjustments} onAddAdjustment={addSalaryAdjustment} onEditAdjustment={editSalaryAdjustment} onDeleteAdjustment={deleteSalaryAdjustment} />}
               {activeTab === Tab.LEAVE && <LeaveManager key={sync.url + ':' + leaveFormRevision} periods={data.leavePeriods} records={data.leaveRecords} onUpdate={(leavePeriods, leaveRecords) => controller.update(previous => ({ ...previous, leavePeriods, leaveRecords }))} onDirtyChange={setHasUnsavedForm} />}
-              {activeTab === Tab.SETTINGS && <Settings transactions={data.transactions} onDeleteCard={bank => controller.update(current => deleteCard(current, bank), true)} categories={data.categories} budget={data.budget} cardBanks={data.cardBanks} cardSettings={data.cardSettings} onUpdateCategories={value => setField('categories', value)} onUpdateBudget={value => setField('budget', value)} onUpdateCardBanks={value => setField('cardBanks', value)} onUpdateCardSettings={value => setField('cardSettings', value)} onCloudSync={(url, upload) => controller.sync(url, upload)} onResetData={() => controller.update(() => initialData(), true)} currentScriptUrl={sync.url} syncStatus={sync.status} onExportBackup={downloadBackup} onImportBackup={value => controller.update(() => value, true)} />}
+              {activeTab === Tab.SETTINGS && <Settings onDirtyChange={setHasUnsavedForm} transactions={data.transactions} onDeleteCard={bank => controller.update(current => deleteCard(current, bank), { reapply: true })} categories={data.categories} budget={data.budget} cardBanks={data.cardBanks} cardSettings={data.cardSettings} onUpdateCategories={value => setField('categories', value)} onUpdateBudget={value => setField('budget', value)} onUpdateCardBanks={value => setField('cardBanks', value)} onUpdateCardSettings={value => setField('cardSettings', value)} onCloudSync={(url, upload) => controller.sync(url, upload)} onResetData={() => controller.update(() => initialData(), { replace: true })} currentScriptUrl={sync.url} dataReady={sync.ready && !sync.pendingUrl} syncStatus={sync.status} onExportBackup={downloadBackup} onImportBackup={value => controller.update(() => value, { replace: true })} />}
             </Suspense></PageBoundary>}
         </div>
       </main>

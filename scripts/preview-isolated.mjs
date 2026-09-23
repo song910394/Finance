@@ -68,5 +68,5 @@ const server = await createServer({
 });
 await server.listen();
 console.log('ISOLATED_PREVIEW http://127.0.0.1:' + port + '/Finance/');
-console.log('只使用合成資料；API 在記憶體模擬，CSP 禁止外部連線。停止程序後模擬雲端重置；瀏覽器草稿仍依正常機制保留。');
+console.log('只使用合成資料；API 在記憶體模擬，CSP 禁止外部連線。停止程序後模擬雲端重置；瀏覽器不保存帳本草稿。');
 process.on('SIGINT', async () => { await server.close(); process.exit(0); });

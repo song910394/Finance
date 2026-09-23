@@ -9,7 +9,8 @@ interface SettingsProps {
   onUpdateCategories: (value: string[]) => void; onUpdateBudget: (value: number) => void;
   onUpdateCardBanks: (value: string[]) => void; onUpdateCardSettings: (value: Record<string, CardSetting>) => void;
   onCloudSync: (url: string, upload: boolean) => Promise<void>; onResetData: () => void;
-  currentScriptUrl: string; syncStatus: string; onExportBackup: () => void; onImportBackup: (value: FinanceData) => void;
+  currentScriptUrl: string; dataReady: boolean; syncStatus: string; onExportBackup: () => void; onImportBackup: (value: FinanceData) => void;
+  onDirtyChange: (dirty: boolean) => void;
 }
 const inputClass = 'min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200';
 const buttonClass = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50';
@@ -29,8 +30,13 @@ export default function Settings(props: SettingsProps) {
   const [working, setWorking] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const budgetEdited = useRef(false);
   useEffect(() => setScriptUrl(props.currentScriptUrl), [props.currentScriptUrl]);
-  useEffect(() => setTempBudget(String(budget)), [budget]);
+  useEffect(() => { if (!budgetEdited.current) setTempBudget(String(budget)); }, [budget]);
+  useEffect(() => {
+    props.onDirtyChange(tempBudget !== String(budget) || Boolean(newCategory || newBank) || scriptUrl.trim() !== props.currentScriptUrl);
+  }, [tempBudget, budget, newCategory, newBank, scriptUrl, props.currentScriptUrl, props.onDirtyChange]);
+  useEffect(() => () => props.onDirtyChange(false), [props.onDirtyChange]);
   useEffect(() => { if (action) dialog.current?.showModal(); else dialog.current?.close(); }, [action]);
   const busy = working || props.syncStatus === 'loading' || props.syncStatus === 'syncing';
   const close = () => { dialog.current?.close(); setAction(null); };
@@ -51,7 +57,7 @@ export default function Settings(props: SettingsProps) {
       else if (selectedAction === 'import' && backup) { props.onImportBackup(backup); setBackup(null); setMessage('備份已載入目前帳本，保存進度請見上方狀態。'); }
       else if (selectedAction === 'upload' || selectedAction === 'download') {
         await props.onCloudSync(scriptUrl.trim(), selectedAction === 'upload');
-        setMessage('請依畫面上方的同步狀態確認結果；若版本不同，請先選擇要保留的資料。');
+        setMessage('雲端同步完成。');
       }
     } catch (reason) { setError(reason instanceof Error ? reason.message : '操作未完成，請重試。'); }
     finally { setWorking(false); }
@@ -69,6 +75,8 @@ export default function Settings(props: SettingsProps) {
   const saveBudget = (event: React.FormEvent) => {
     event.preventDefault();
     if (tempBudget.trim() === '' || !/^\d+(\.\d+)?$/.test(tempBudget.trim()) || !Number.isFinite(Number(tempBudget))) { setError('請輸入有效的非負預算金額；0 代表不設定可用預算。'); return; }
+    budgetEdited.current = false;
+    setTempBudget(String(Number(tempBudget)));
     props.onUpdateBudget(Number(tempBudget)); setError(''); setMessage('預算已更新，保存進度請見上方狀態。');
   };
   const updateCard = (bank: string, value: Partial<CardSetting>) => props.onUpdateCardSettings({ ...cardSettings, [bank]: { ...(cardSettings[bank] ?? { statementDay: 0 }), ...value } });
@@ -78,12 +86,12 @@ export default function Settings(props: SettingsProps) {
     {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}
     <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
       <h3 className="text-lg font-bold">Google 試算表連線</h3>
-      <p className="text-sm leading-relaxed text-slate-600">變更網址不會立即切換帳本。從雲端還原成功後，才會啟用新連線；有本機草稿時會先請你確認版本。</p>
+      <p className="text-sm leading-relaxed text-slate-600">變更網址不會立即切換帳本。連線成功後才會切換；平常儲存修改會立即上傳，其他設備的紀錄會一併保留。</p>
       <label htmlFor="script-url" className="block text-sm font-medium">Apps Script 網址</label>
       <input id="script-url" type="url" value={scriptUrl} onChange={event => setScriptUrl(event.target.value)} className={inputClass} placeholder="https://script.google.com/…" autoComplete="off" spellCheck={false} />
       <div className="flex flex-wrap gap-3">
         <button type="button" className={buttonClass} disabled={busy} onClick={() => requestCloud('download')}><CloudDownload size={18} />從雲端還原</button>
-        <button type="button" className={buttonClass} disabled={busy || props.syncStatus === 'conflict'} onClick={() => requestCloud('upload')}><CloudUpload size={18} />以上傳資料更新雲端</button>
+        <button type="button" className={buttonClass} disabled={busy || !props.dataReady} onClick={() => requestCloud('upload')}><CloudUpload size={18} />以上傳資料更新雲端</button>
       </div>
     </section>
     <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
@@ -91,40 +99,40 @@ export default function Settings(props: SettingsProps) {
       <p className="text-sm text-slate-600">JSON 備份包含交易、卡片設定、月度帳務、入帳來源、薪資歷程及年假年度與休假明細（含用途與保留時數）。Excel 匯出僅包含交易明細。</p>
       <div className="flex flex-wrap gap-3">
         <button type="button" className={buttonClass} onClick={props.onExportBackup}><Download size={18} />匯出完整備份</button>
-        <button type="button" className={buttonClass} onClick={() => fileInput.current?.click()} disabled={busy}><Upload size={18} />匯入完整備份</button>
+        <button type="button" className={buttonClass} onClick={() => fileInput.current?.click()} disabled={busy || !props.dataReady}><Upload size={18} />匯入完整備份</button>
         <input ref={fileInput} type="file" accept=".json,application/json" className="hidden" onChange={event => void readBackup(event.target.files?.[0])} aria-label="選擇完整備份檔案" />
       </div>
     </section>
-    <section className="rounded-2xl border border-slate-200 bg-white p-4">
+    <fieldset disabled={!props.dataReady} className="rounded-2xl border border-slate-200 bg-white p-4">
       <h3 className="mb-4 text-lg font-bold">每月消費預算</h3>
-      <form onSubmit={saveBudget} className="flex flex-wrap items-end gap-3"><label className="min-w-0 text-sm font-medium">預算金額<input type="number" min="0" step="0.01" required value={tempBudget} onChange={event => setTempBudget(event.target.value)} className={inputClass + ' mt-2'} /></label><button type="submit" className={buttonClass}><Save size={18} />儲存預算</button></form>
+      <form onSubmit={saveBudget} className="flex flex-wrap items-end gap-3"><label className="min-w-0 text-sm font-medium">預算金額<input type="number" min="0" step="0.01" required value={tempBudget} onChange={event => { budgetEdited.current = true; setTempBudget(event.target.value); }} className={inputClass + ' mt-2'} /></label><button type="submit" className={buttonClass}><Save size={18} />儲存預算</button></form>
       <p className="mt-3 text-sm text-slate-500">用於概覽的消費預算使用率；月度帳務中的入帳與貸款另行管理。</p>
-    </section>
-    <section className="card-settings-section space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+    </fieldset>
+    <fieldset disabled={!props.dataReady} className="card-settings-section space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
       <h3 className="text-lg font-bold">信用卡與帳單週期</h3>
       <div className="card-settings-grid">{cardBanks.filter(bank => bank !== '-').map(bank => <div key={bank} className="rounded-xl border border-slate-200 p-3">
         <div className="flex items-center justify-between gap-2"><h4 className="min-w-0 break-words font-bold">{bank}</h4><button type="button" aria-label={'刪除信用卡 ' + bank} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-sm text-rose-700 hover:bg-rose-50" onClick={() => {
           const count = props.transactions.filter(transaction => transaction.cardBank === bank).length;
-          if (!window.confirm(`刪除「${bank}」？\n${count} 筆既有消費（包含預先建立的未來期次）將改為現金，金額、日期與分期繳款註記保留。卡片帳單設定會移除，歷史每月帳務卡費仍保留。\n系統會先保留完整本機備份，再執行刪除。`)) return;
-          try { props.onDeleteCard(bank); setError(''); setMessage(`已刪除「${bank}」，${count} 筆消費改為現金；原帳本已保留於本機備份。`); }
-          catch (error) { setError(error instanceof Error ? error.message : '備份或刪除失敗，請重試。'); }
+          if (!window.confirm(`刪除「${bank}」？\n${count} 筆既有消費（包含預先建立的未來期次）將改為現金，金額、日期與分期繳款註記保留。卡片帳單設定會移除，歷史每月帳務卡費仍保留。\n刪除後會立即上傳；若要保留原版本，請先匯出完整備份。`)) return;
+          try { props.onDeleteCard(bank); setError(''); setMessage(`已刪除「${bank}」，${count} 筆消費改為現金；上傳進度請見上方狀態。`); }
+          catch (error) { setError(error instanceof Error ? error.message : '刪除失敗，請重試。'); }
         }}><Trash2 size={16} />刪除</button></div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1"><label className="inline-flex items-center gap-2 text-sm">結帳日<select aria-label={bank + '結帳日'} value={cardSettings[bank]?.statementDay || ''} onChange={event => updateCard(bank, { statementDay: event.target.value ? Number(event.target.value) : 0 })} className={inputClass + ' !w-24'}><option value="">未設定</option>{Array.from({ length: 31 }, (_, index) => index + 1).map(day => <option key={day} value={day}>{day} 日</option>)}</select></label>
         <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5 accent-indigo-600" checked={cardSettings[bank]?.isNextMonth ?? ((cardSettings[bank]?.statementDay ?? 15) < 15)} onChange={event => updateCard(bank, { isNextMonth: event.target.checked })} />次月結帳</label></div>
       </div>)}</div>
       <form onSubmit={event => { event.preventDefault(); const name = newBank.trim(); if (name && !cardBanks.includes(name)) { props.onUpdateCardBanks([...cardBanks, name]); setNewBank(''); } }} className="flex gap-3"><input aria-label="新增信用卡名稱" value={newBank} onChange={event => setNewBank(event.target.value)} placeholder="新增信用卡名稱" className={inputClass} /><button type="submit" className={buttonClass} disabled={!newBank.trim() || cardBanks.includes(newBank.trim())}><Plus size={18} />新增</button></form>
-    </section>
-    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+    </fieldset>
+    <fieldset disabled={!props.dataReady} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
       <h3 className="text-lg font-bold">消費分類</h3>
       <p className="text-sm text-slate-600">移除分類選項會保留既有交易的分類紀錄。</p>
       <div className="flex flex-wrap gap-2">{categories.map(category => <span key={category} className="inline-flex items-center rounded-xl bg-slate-100 pl-3 text-sm">{category}<button type="button" aria-label={'移除分類選項 ' + category} className="touch-target ml-1 rounded-xl text-slate-500 hover:bg-rose-50 hover:text-rose-700" onClick={() => { if (window.confirm('移除「' + category + '」分類選項？既有交易將保留原分類。')) props.onUpdateCategories(categories.filter(value => value !== category)); }}><X size={16} /></button></span>)}</div>
       <form onSubmit={event => { event.preventDefault(); const name = newCategory.trim(); if (name && !categories.includes(name)) { props.onUpdateCategories([...categories, name]); setNewCategory(''); } }} className="flex gap-3"><input aria-label="新增消費分類" value={newCategory} onChange={event => setNewCategory(event.target.value)} placeholder="新增消費分類" className={inputClass} /><button type="submit" className={buttonClass} disabled={!newCategory.trim() || categories.includes(newCategory.trim())}><Plus size={18} />新增</button></form>
-    </section>
-    <section className="rounded-2xl border border-rose-200 bg-white p-4"><h3 className="font-bold text-rose-800">重設帳本</h3><p className="my-3 text-sm text-slate-600">清空交易、月度帳務、薪資、年假年度與休假明細（含用途與保留時數），並重設記帳選項。連線恢復後，清空結果也會同步到雲端，請先匯出完整備份。</p><button type="button" className={buttonClass + ' text-rose-700'} onClick={() => setAction('reset')} disabled={busy || props.syncStatus === 'conflict'}><Trash2 size={18} />清空並重設帳本</button></section>
+    </fieldset>
+    <fieldset disabled={!props.dataReady} className="rounded-2xl border border-rose-200 bg-white p-4"><h3 className="font-bold text-rose-800">重設帳本</h3><p className="my-3 text-sm text-slate-600">清空交易、月度帳務、薪資、年假年度與休假明細（含用途與保留時數），並重設記帳選項。連線恢復後，清空結果也會同步到雲端，請先匯出完整備份。</p><button type="button" className={buttonClass + ' text-rose-700'} onClick={() => setAction('reset')} disabled={busy || !props.dataReady}><Trash2 size={18} />清空並重設帳本</button></fieldset>
     <dialog ref={dialog} onClose={() => setAction(null)} aria-labelledby="settings-confirm-title" className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
       <div className="flex items-center justify-between gap-3"><h3 id="settings-confirm-title" className="text-lg font-bold">{action === 'import' ? '確認還原完整備份' : action === 'reset' ? '確認清空帳本' : action === 'upload' ? '確認更新雲端資料' : '確認從雲端還原'}</h3><button type="button" aria-label="關閉確認視窗" onClick={close} className="touch-target rounded-xl"><X size={20} /></button></div>
       <div className="my-5 space-y-3 text-sm leading-relaxed text-slate-600">
-        {action === 'import' && backup ? <><p>此備份包含 {backup.transactions.length} 筆交易、{backup.budgets.length} 個月份的帳務、{backup.salaryAdjustments.length} 筆薪資紀錄、{backup.leavePeriods.length} 個年假年度及 {backup.leaveRecords.length} 筆休假／保留紀錄。</p>{missingLeave && <p className="font-bold text-rose-800">這份備份沒有年假欄位。若取代目前完整資料，現有年假也會被清空，不會合併不同版本。</p>}<p>確認後會整份取代目前帳本（包含年假用途與保留時數），並依目前連線設定排入同步。系統會先保留完整原版本至「其他本機草稿」；備份失敗即停止取代。</p></> : action === 'reset' ? <p>目前交易、月度帳務、薪資、年假年度與休假明細（含用途與保留時數）將清空，記帳選項將重設；此結果會排入雲端同步。系統會先保留完整原版本，備份失敗即停止清空。</p> : <><p>{action === 'upload' ? '將使用目前完整帳本（含年假年度、用途、休假明細與保留時數）更新下方網址的雲端資料。若雲端有不同版本，可能被整份取代。' : '將讀取下方網址的完整帳本（包含年假用途與保留時數）。所選版本沒有年假時，目前年假也會被清空，不會合併。有未同步的本機草稿時會先暫停，讓你選擇要保留的版本；取代前保留完整原版本，備份失敗即停止。'}</p><p className="break-all rounded-xl bg-slate-50 p-3 font-mono text-xs">{scriptUrl.trim()}</p></>}
+        {action === 'import' && backup ? <><p>此備份包含 {backup.transactions.length} 筆交易、{backup.budgets.length} 個月份的帳務、{backup.salaryAdjustments.length} 筆薪資紀錄、{backup.leavePeriods.length} 個年假年度及 {backup.leaveRecords.length} 筆休假／保留紀錄。</p>{missingLeave && <p className="font-bold text-rose-800">這份備份沒有年假欄位。若取代目前完整資料，現有年假也會被清空，不會合併不同版本。</p>}<p>確認後會整份取代目前帳本（包含年假用途與保留時數），並立即上傳雲端。若要保留原版本，請先匯出完整備份。</p></> : action === 'reset' ? <p>目前交易、月度帳務、薪資、年假年度與休假明細（含用途與保留時數）將清空，記帳選項將重設；此結果會立即上傳雲端。若要保留原版本，請先匯出完整備份。</p> : <><p>{action === 'upload' ? '將使用目前完整帳本（含年假年度、用途、休假明細與保留時數）更新下方網址的雲端資料。若雲端有不同版本，可能被整份取代。' : '將讀取下方網址的完整帳本（包含年假用途與保留時數）。所選版本沒有年假時，目前年假也會被清空，不會合併。尚有未上傳的修改時，請先重試同步。若要保留目前版本，請先匯出完整備份。'}</p><p className="break-all rounded-xl bg-slate-50 p-3 font-mono text-xs">{scriptUrl.trim()}</p></>}
       </div>
       <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={props.onExportBackup} className={buttonClass}>先匯出備份</button><button type="button" onClick={close} className={buttonClass}>取消</button><button type="button" onClick={() => void runConfirmed()} className="min-h-11 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">確認{action === 'reset' ? '清空' : action === 'import' ? '還原' : action === 'upload' ? '上傳' : '下載'}</button></div>
     </dialog>

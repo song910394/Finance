@@ -12,16 +12,17 @@ describe('salary input and editing', () => {
         const storage = new Map<string, string>();
         const controller = createFinanceSync({
             initialData: { transactions: [], categories: ['其他'], budget: 50000, cardBanks: ['-'], cardSettings: {}, incomeSources: [], budgets: [], salaryAdjustments: [], leavePeriods: [], leaveRecords: [] },
-            initialUrl: '',
+            initialUrl: 'https://example.test/salary',
             storage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => { storage.set(key, value); } },
-            load: async () => { throw new Error('This test must not load from the cloud'); },
-            save: async () => { throw new Error('This test must not save to the cloud'); },
+            load: async () => null,
+            save: async () => true,
         });
         try {
             await controller.start();
             const adjustment = prepareSalaryAdjustment({ date: '2026-09', totalSalary: '50000', adjustmentItem: '合成測試', laborInsurance: '1000', healthInsurance: '800', mealCost: '0', welfareFund: '200' }, [], null);
             controller.update(current => ({ ...current, salaryAdjustments: [{ ...adjustment, id: 'synthetic-salary' }] }));
-            expect(controller.getSnapshot()).toMatchObject({ localSaved: true, dirty: true, data: { salaryAdjustments: [{ date: '2026-09', totalSalary: 50000, laborInsurance: 1000, healthInsurance: 800, mealCost: 0, welfareFund: 200 }] } });
+            await controller.whenIdle();
+            expect(controller.getSnapshot()).toMatchObject({ status: 'saved', dirty: false, data: { salaryAdjustments: [{ date: '2026-09', totalSalary: 50000, laborInsurance: 1000, healthInsurance: 800, mealCost: 0, welfareFund: 200 }] } });
             expect(parseBackup(serializeBackup(controller.getSnapshot().data)).salaryAdjustments[0]).toEqual({ ...adjustment, id: 'synthetic-salary' });
         } finally { controller.stop(); }
     });
