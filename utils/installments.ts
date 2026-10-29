@@ -10,6 +10,8 @@ export interface InstallmentGroupSummary {
     unreconciledPeriods: number;
     recordedAmount: number;
     unreconciledAmount: number;
+    periodAmountMin: number;
+    periodAmountMax: number;
     completeSchedule: boolean;
     endMonth: string | null;
 }
@@ -73,6 +75,8 @@ export const summarizeInstallments = (transactions: Transaction[], month: string
             unreconciledPeriods: unreconciled.length,
             recordedAmount: sum(group.map(t => t.amount)),
             unreconciledAmount: sum(unreconciled.map(t => t.amount)),
+            periodAmountMin: group.reduce((minimum, t) => Math.min(minimum, t.amount), first.amount),
+            periodAmountMax: group.reduce((maximum, t) => Math.max(maximum, t.amount), first.amount),
             completeSchedule,
             // A recorded last period is evidence; a date projected from a description is not.
             endMonth: completeSchedule ? lastDate.slice(0, 7) : null,

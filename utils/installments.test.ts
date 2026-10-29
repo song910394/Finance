@@ -49,6 +49,25 @@ describe('summarizeInstallments', () => {
         expect(result.groups[0]).toMatchObject({ recordedAmount: 334, completeSchedule: false, endMonth: null, recordedPeriods: 1 });
     });
 
+    it('每期金額取自實際明細，保留各期差額，不以總額平均', () => {
+        const rows = [
+            transaction(),
+            transaction({ id: 'second', date: '2026-02-28', amount: 333, installmentNumber: 2 }),
+            transaction({ id: 'third', date: '2026-03-31', amount: 333, installmentNumber: 3 }),
+        ];
+        const before = JSON.stringify(rows);
+        expect(summarizeInstallments(rows, '2026-02').groups[0]).toMatchObject({
+            periodAmountMin: 333, periodAmountMax: 334, recordedAmount: 1000,
+        });
+        expect(JSON.stringify(rows)).toBe(before);
+        expect(summarizeInstallments(rows.map(row => ({ ...row, amount: 333.5 })), '2026-02').groups[0]).toMatchObject({
+            periodAmountMin: 333.5, periodAmountMax: 333.5,
+        });
+        expect(summarizeInstallments([transaction({ amount: 0 })], '2026-02').groups[0]).toMatchObject({
+            periodAmountMin: 0, periodAmountMax: 0, completeSchedule: false,
+        });
+    });
+
     it('同一 ID 跨卡別或重複期數列為待確認，不合併判定進度', () => {
         expect(summarizeInstallments([transaction(), transaction({ id: 'other', cardBank: '國泰' })], '2026-01').groups).toEqual([]);
         expect(summarizeInstallments([transaction(), transaction({ id: 'duplicate' })], '2026-01').unconfirmed).toHaveLength(2);
